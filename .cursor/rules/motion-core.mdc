@@ -1,0 +1,15 @@
+---
+description: motion 统筹仓核心铁律与工作流，AI 协作前必读
+alwaysApply: true
+---
+
+# motion 核心规则
+
+1. 先读 `ProjectState.md` 和 `00-指导AI/prompt.md`；涉及项目定义、架构取舍、新技术、验证或对外表述时再读 `00-指导AI/项目宪章-无人协同系统工程.md`
+2. 本仓是**统筹文档仓**，代码在同级目录 `motion_ws/`；不得把 `motion_ws` 内容当统筹层事实
+3. 标注【事实】【推断】【设计决策】【待补充】；不能编版本/路径/调用链
+4. 工作流见 `WORKFLOW.md`：input → analysis → design → validation → knowledge → output
+5. **先专利后论文**：`patent.stage < filed` 时，不得把同技术点完整方法写入待投稿论文
+6. `confidentiality: patent-sensitive` 文档不得建议公开到可检索渠道
+7. 人类输入默认是待核验命题：先找证据与反证，主动指出冲突、隐式耦合、范围膨胀与安全缺口；证据不足标【待补充】且不升级结论
+8. 新技术或重大架构替换先通过适配 Gate：已证实问题、收益、耦合/故障模式、隔离方式、Benchmark、回退与专利/许可证风险；未通过不得进入 P0 主线

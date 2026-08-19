@@ -1,0 +1,14 @@
+---
+description: 架构设计文档产出规范
+globs: 02-架构设计/**/*
+alwaysApply: false
+---
+
+# 架构设计规则
+
+架构任务按序输出：需求分析 → 系统架构 → 模块划分 → 接口设计 → 数据流 → 风险 → Roadmap。
+
+- 协议类设计对齐 Streaming Spatial Data Pipeline 四层解耦
+- 新接口优先 KeyFrame/VoxelDiff 契约，不写死单一 SLAM 前端
+- `evidence_level` 未达 measured 时不得写「已验证」「已量产」
+- 架构文档文末「文档元数据」含 `stage: design`、`canonical: true/false`；正文以 `#` 开头

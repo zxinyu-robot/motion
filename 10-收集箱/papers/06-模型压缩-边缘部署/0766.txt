@@ -1,0 +1,547 @@
+                            Proceedings of the Thirty-Fourth International Joint Conference on Artificial Intelligence (IJCAI-25)
+
+
+
+
+                 Boost Embodied AI Models with Robust Compression Boundary
+
+                                    Chong Yu1 , Tao Chen2,∗ , Zhongxue Gan1,∗
+                             1
+                               Academy for Engineering and Technology, Fudan University
+                         2
+                           School for Information Science and Technology, Fudan University
+                       21110860050@m.fudan.edu.cn, {eetchen, ganzhongxue}@fudan.edu.cn
+
+
+                             Abstract                                             control strategies learning for robotic manipulation. The
+                                                                                  enormous robot manipulation datasets [Khazatsky et al.,
+        The rapid improvement of deep learning mod-                               2024] only have 100K to 1M examples, while the foun-
+        els with the integration of the physical world has                        dation models are trained with Internet-scale pretraining
+        dramatically improved embodied AI capabilities.                           datasets [Laurençon et al., 2022]. By fully utilizing the gen-
+        Meanwhile, the powerful embodied AI models and                            eralization capabilities of the foundation models, the robots
+        their scales place an increasing burden on deploy-                        may be able to extrapolate behaviors to different surround-
+        ment efficiency. The efficiency issue is more ap-                         ing conditions (e.g., manipulation positions [Brohan et al.,
+        parent on embodied AI platforms than on data cen-                         2022], lighting [Chi et al., 2023], scene distractors [Xie et
+        ters because they have more limited computational                         al., 2024]) and unseen situations (e.g., novel objects [Mees
+        resources and memory bandwidth. Meanwhile,                                et al., 2024], new task instruction [Walke et al., 2023]). Fol-
+        most embodied AI scenarios, like autonomous driv-                         lowing this paradigm, a series of the vision-language- action
+        ing and robotics, are more sensitive to fast re-                          (VLA) models [Kim et al., 2024] are explored to enhance the
+        sponses. Theoretically, the traditional model com-                        control and manipulation of robotics.
+        pression techniques can help embodied AI mod-
+        els with more efficient computation, lower mem-                                  ‘Rain’                    ‘Snow’           ‘Night’
+        ory and energy consumption, and reduced latency.
+        Because the embodied AI models are expected to
+        interact with the physical world, the correspond-
+        ing compressed models are also expected to resist
+        natural corruption caused by real-world events such
+        as blur, darkness, weather conditions, and even ad-
+                                                                                  Figure 1: The autonomous driving models are expected to resist
+        versarial corruption. This paper explores the novel
+                                                                                  against the natural corruption caused by real-world events such as
+        paradigm to boost the efficiency of the embodied                          bad weather conditions and low-illumination in night.
+        AI models and the robust compression boundary.
+        The efficacy of our method has been proven to find
+        the optimal balance between accuracy, efficiency,                            The rapid development of large-scale neural models has
+        and robustness in real-world conditions.                                  broadly and profoundly influenced the capabilities of em-
+                                                                                  bodied AI. Meanwhile, large-scale neural models have draw-
+                                                                                  backs [Yu, 2021], such as high computational cost and energy
+1       Introduction                                                              consumption, limitations in response-sensitive scenarios, and
+As of 2025, the field of embodied AI is witnessing signifi-                       high memory requirements in the edge platforms of embodied
+cant advancements, driven by innovations in technology and                        AI. Considering the application characters and actual costs,
+a growing understanding of how to integrate AI with physi-                        the computational core devices on embodied AI platforms
+cal systems. For example, various classification [Yang et al.,                    tend to use embedded systems with low power consumption,
+2023b], object detection [Jiang et al., 2023], and semantic                       limited computational power, and memory [Tinchev et al.,
+segmentation [Liu et al., 2023b] models help autonomous ve-                       2019] [Wan et al., 2021]. So, model compression [Abbasi et
+hicles perceive the surrounding environments better. Visual                       al., 2022] [Li et al., 2022] is essential to alleviate the gaps
+SLAM and point cloud models further improve autonomous                            between the increasing scale and considerable resource con-
+vehicles’ positioning and navigation capabilities in a dynamic                    sumption of the models and their efficient deployment on the
+environment.                                                                      limited-capacity embodied AI hardware platforms.
+   Another good example is introducing the vision and lan-                           Considering the safety and robustness concerns in the em-
+guage foundation models [Touvron et al., 2023] into the                           bodied AI application, e.g., autonomous driving area, when
+                                                                                  we want to compress an autonomous driving model into com-
+    ∗
+        Tao Chen and Zhongxue Gan are corresponding authors.                      pressed form, we need to check further whether this com-
+
+
+
+                                                                           6886
+                        Proceedings of the Thirty-Fourth International Joint Conference on Artificial Intelligence (IJCAI-25)
+
+
+
+
+Figure 2: Naive model compression technique which disentangles the model compression process (Upper) on the benign training dataset
+with the against-corruption learning process (Lower) on the real or generated corrupted dataset.
+
+
+pressed autonomous driving model is a qualified substitute                    in initialization or some knowledge-distillation-based com-
+facing corruptions. In traffic, the autonomous driving models                 pression techniques [Li et al., 2023] [Yu et al., 2023b] as the
+are expected to resist natural corruption caused by real-world                golden reference, so they are frozen.
+events shown in Figure 1 such as blur, darkness, weather con-                    After verifying the compressed models’ quality on the be-
+ditions, and even the adversarial corruption to further guaran-               nign dataset, the extra step is needed to evaluate whether the
+tee the safety of the compressed embodied AI models.                          compressed is a qualified substitute when facing corruption,
+   In this paper, we first review the prior arts of model com-                shown in the lower part of the Figure 2. Prior arts [Hnewa and
+pression and their potential flaws when applied to embod-                     Radha, 2020] will collect the real corrupted images or gen-
+ied AI models, which require good accuracy, efficient de-                     erate the simulated corrupted images to cover natural [Chen
+ployment, safety, and robustness for corruption. Based on                     et al., 2018] and adversarial corruption [Shen et al., 2021]
+the analysis of past efforts, we explore and propose a novel                  cases. Then, these corrupted input images are used to evalu-
+paradigm for embodied AI models’ compression. We push                         ate the compressed models’ accuracy and detection results. In
+the robust compression boundary beyond the upper limita-                      this case, the weight parameters of the target compressed em-
+tions that come from the original dense model. Finally, we                    bodied AI model will also be frozen. Some prior arts [Shen
+evaluate our method on typical embodied AI models and                         et al., 2021] [Diffenderfer et al., 2021] try to improve the ro-
+benchmarking tasks to show the efficacy of our method for                     bustness capabilities of the compressed embodied AI model,
+finding the optimal balance between accuracy, efficiency, and                 so they divide the subset of the collected corrupted images
+robustness in real-world conditions.                                          and unfrozen the weight parameters of the target compressed
+                                                                              embodied AI model for against-corruption finetuning.
+2     Related Work
+                                                                                 Some prior works further explore the relationship between
+2.1    Model Compression Against Corruption                                   model compression and robustness against corruption [Gui et
+When we try to use a compressed embodied AI model as the                      al., 2019] [Wang et al., 2023]. Based on their exploration, the
+substitute for an original dense model, the typical strategy is               previous workflow shown in Figure 2 disentangles the model
+applying the compression technique to ensure this obtained                    compression process with the against-corruption finetuning
+compressed model has a similar model accuracy and detec-                      process while simplifying the complexity of the workflow but
+tion results with the original dense model on benign input                    introducing flaws. The apparent flaw is that further finetun-
+images, shown in the upper part of the Figure 2. In this                      ing on the corrupted samples may lead to the accuracy regres-
+model compression process, only the weight parameters of                      sion on the benign samples. Compensation efforts [Yan et al.,
+the target compressed embodied AI model will be updated.                      2018] [Wang et al., 2019] by recurrent training on individ-
+The weight parameters of the original dense model are used                    ual benign and corrupted datasets or joint training on mixed
+
+
+
+                                                                       6887
+                          Proceedings of the Thirty-Fourth International Joint Conference on Artificial Intelligence (IJCAI-25)
+
+
+
+
+Figure 3: Efficient contrast-learning-based robust model compression and evaluation process to guarantee the compressed embodied AI model
+is a qualified substitute. (Upper) Check the detection results of the dense embodied AI model and the compressed counterpart, and guarantee
+they have the similar behaviors. (Lower) Collect the real or generate the simulated corrupted images to cover the natural and adversarial
+corruption cases. Check the detection results of the dense and the compressed counterpart on these corrupted images. Tuning the compressed
+model if they have different behaviors, and finally to guarantee they have the similar behaviors on the corrupted images as well.
+
+
+benign and corrupted samples are proposed, but also raising                     can learn from their environment and adapt to changes in
+concerns about more training cost and non-trivial efforts in                    real time, improving efficiency. The system called Robotic
+balancing the accuracy and robustness. The more efficient                       Avatars [Luo et al., 2022] allow users to operate robots re-
+workflow [Yu et al., 2023a] introduces contrast learning into                   motely, capturing environmental data for telepresence appli-
+the robust model compression process, as shown in the Fig-                      cations. This technology has potential uses in telemedicine
+ure 3. During the normal model compression process, the                         and hazardous environment operations.
+workflow will check the detection results of the dense em-                         With comparable and even superior effectiveness than
+bodied AI model and the compressed counterpart on the cor-                      the traditional convolution neural models, more transformer-
+rupted images. If they have different behaviors, we need to                     based models [Liu et al., 2023b] [Yang et al., 2023a] [Liu et
+tune the compressed model and finally guarantee they have                       al., 2023a] are explored and widely adopted in embodied AI
+similar behaviors on the corrupted samples, as well as on the                   typical applications with state-of-the-art performance. How-
+benign samples.                                                                 ever, large-scale transformer-based models are computation-
+                                                                                intensive and memory-intensive [Yu et al., 2023b], placing an
+2.2   Typical Embodied AI Models and Applications                               increasing burden on deployment efficiency.
+Embodied AI represents a significant advancement in ar-                         3    Boost Robust Compression Boundary
+tificial intelligence, focusing on systems integrating cogni-
+tive abilities with physical actions to interact with and learn                 By analyzing the prior model compression paradigms with a
+from their environments. Embodied AI has revolutionized                         against-corruption setting, we find there are two main short-
+autonomous vehicles by enabling them to navigate complex                        comings in prior approaches, include:
+environments with human-like decision-making capabilities.                        • The model compression techniques do not fully dig into
+Autonomous vehicles can adapt to changing road conditions                            and utilize the difference between the benign and cor-
+and obstacles using advanced multi-modal perception sys-                             rupted training samples.
+tems. Robots equipped with embodied AI are used in man-                           • The compressed model cannot exceed the robustness
+ufacturing for assembly and material transport tasks. They                           boundary of the dense model because both the model
+
+
+
+                                                                         6888
+                          Proceedings of the Thirty-Fourth International Joint Conference on Artificial Intelligence (IJCAI-25)
+
+
+
+
+Figure 4: Workflow for Boost Robust Compression Boundary (BRCB) (Left) Against-Corruption Mechanism to divide the original dense
+model into the corruptions-stable and corruptions-sensitive parts in fine-granularity. (Right) Push the limitation of Robustness Boundary of
+the dense model when facing corruption be introducing the BRCB gate layer in the corruption-sensitive model compression tuning process.
+
+
+      compression and contrast finetuning processes apply the                   weight tensors to generate a concentrated diff weight. All
+      dense model as the golden reference.                                      the elements in this concentrated diff weights are corruption-
+   We intend to improve these two shortcomings and propose                      sensitive. With this corruptions-sensitive diff weight, we can
+a new algorithm to compress the embodied AI models to push                      transfer it as a corruptions-sensitive mask, using the bool el-
+their robustness boundary and efficiency. The new algorithm                     ements to indicate the positions of the corruptions-sensitive
+is called Boost Robust Compression Boundary (BRCB).                             elements. Because the corruptions-sensitive mask is in the
+                                                                                same shape as the original dense model’s weight, we can at-
+3.1   Against-Corruption Mechanism                                              tach them to filter out a new weight tensor that contains all
+                                                                                the corruptions-stable elements.
+Traditional studies regard corrupted samples as domain trans-
+formation. So, they usually use the corrupted samples for                          Because the input sample corruptions will less influence
+domain adaptation or mix them with benign ones in adver-                        the elements in the corruptions-stable weight tensors, we can
+sarial training. However, these prior solutions ignore whether                  apply the combined sparse pruning and quantization tech-
+such a difference between the corrupted and benign samples                      niques as normal for weight compression. And we call it
+can be integrated and used for improving the model compres-                     the corruption-stable model compression path in the BRCB
+sion process. Inspired by this point, we design the against-                    algorithm. Usually, the corruptions-stable weight tensors
+corruption mechanism for BRCB workflow.                                         are more friendly to compression without out-of-range out-
+   When we get the natural or adversarial corrupted samples,                    liers. For the corruptions-sensitive diff weight, we will use
+we first use them to calibrate the dense embodied AI model.                     the collected corrupted samples to execute the corruptions-
+Because the corrupted samples can be regarded as benign                         sensitive model compression, with more details in the fol-
+samples that concatenate the differences, the calibration, i.e.,                lowing section. Finally, the BRCB algorithm combines the
+tiny tuning for the original dense embodied AI model, can                       compressed weights from corruptions-stable and corruptions-
+usually work well with the corrupted samples. In other words,                   sensitive paths to obtain the final compressed embodied AI
+the differences between the original and the calibrated dense                   model. The detailed against-corruption mechanism is shown
+weight tensors should be marginal. So, we can disassemble                       in the left side of Figure 4.
+the calibrated dense weight tensors as the similar weight part                     The key to BRCB’s against-corruption mechanism design
+and the diff weight part, e.g., rainy diff, snowy diff, dark diff,              is a fine-granularity division for the corruptions-stable and
+and adversarial diff in the left side of Figure 4.                              corruptions-sensitive elements from the original dense model.
+   Then, the BRCB algorithm will concatenate all the diff                       For the corruptions-stable elements, which are friendly for
+
+
+
+                                                                         6889
+                         Proceedings of the Thirty-Fourth International Joint Conference on Artificial Intelligence (IJCAI-25)
+
+
+
+                                                     Benign Samples          Rainy Corruption          Snowy Corruption          Dark Corruption
+      Model            Method           Format
+                                                     NDS mAP                 NDS mAP                   NDS mAP                   NDS mAP
+                       Baseline         FP32         51.7      41.6          41.4         32.2         42.5      32.9            37.3   27.5
+                       MiniViT          FP32         50.7      40.7          40.6         31.5         41.6      32.2            36.5   26.9
+                       UVC              FP32         49.8      39.7          39.9         30.7         40.9      31.4            35.9   26.3
+      BEVFormer        FQ-ViT           INT8         50.1      40.0          40.1         30.9         41.1      31.6            36.1   26.4
+                       PTQ-ViT          INT8         50.3      40.1          40.3         31.0         41.3      31.7            36.3   26.5
+                       GPUSQ-ViT        INT8         51.1      40.9          41.0         31.6         42.0      32.4            36.9   27.1
+                       BRCB             INT8         51.3      41.1          46.2         35.8         47.3      36.6            42.1   31.2
+                       Baseline         FP32         55.3      46.0          44.3         35.6         45.4      36.4            39.9   30.4
+                       MiniViT          FP32         54.2      45.0          43.4         34.8         44.5      35.6            39.1   29.7
+                       UVC              FP32         53.3      43.9          42.7         34.0         43.7      34.8            38.4   29.0
+      BEVFormer v2     FQ-ViT           INT8         53.6      44.2          42.9         34.2         44.0      35.0            38.6   29.2
+                       PTQ-ViT          INT8         53.8      44.3          43.1         34.3         44.2      35.1            38.8   29.3
+                       GPUSQ-ViT        INT8         54.7      45.3          43.8         35.0         44.9      35.8            39.4   29.9
+                       BRCB             INT8         54.9      45.4          49.4         39.6         50.5      40.5            45.0   34.6
+                       Baseline         FP32         71.4      68.5          57.2         53.0         58.6      54.2            51.5   45.3
+                       MiniViT          FP32         70.0      67.0          56.0         51.8         57.5      53.0            50.4   44.3
+                       UVC              FP32         68.7      65.4          55.1         50.6         56.5      51.8            49.6   43.3
+      BEVFusion        FQ-ViT           INT8         69.2      65.8          55.4         50.9         56.8      52.1            49.9   43.5
+                       PTQ-ViT          INT8         69.5      66.1          55.6         51.1         57.0      52.3            50.1   43.7
+                       GPUSQ-ViT        INT8         70.6      67.4          56.6         52.1         58.0      53.3            50.9   44.6
+                       BRCB             INT8         70.8      67.6          63.8         59.0         65.2      60.3            58.1   51.5
+
+         Table 1: Compare the BRCB with state-of-the-art compression methods on autonomous driving (3D object detection) task.
+
+
+model compression, BRCB can compress them into a more                             We can find that the BRCB gate introduced in the
+compact form. For the corruptions-sensitive elements, BRCB                     corruption-sensitive model compression process has no re-
+fully utilizes the given corrupted training samples during their               liance on the original dense model as a golden reference. In
+compression process.                                                           contrast, it enhances the robustness of the corruption for the
+                                                                               compressed model from the principle. In the following exper-
+3.2    Push the Limitation of Robustness Boundary                              iments, we can see that the BRCB-compressed models can
+In prior model compression techniques, the dense model’s be-                   even exceed the robustness boundary of the dense model.
+havior is used as the golden reference, and the target com-
+pressed model is designed to mimic the dense model’s in-                       4        Experiments and Results
+ference results and feature maps. Suppose the dense model
+makes the wrong inference result due to the perturbation                       For the experiments in this section, we choose PyTorch with
+caused by changing from benign to adversarial samples. In                      version 1.9.0 as the framework to train all baseline and effi-
+that case, the compressed model will have a high possibility                   cient neural models. All of the training experimental results
+of making the same mistake. This principle design paradigm                     are obtained with A100 GPU clusters. All the accuracy re-
+limits the compressed model, which cannot exceed the ro-                       sults reported for our proposed method use INT8 as the de-
+bustness boundary of dense model when facing corruption.                       fault data type. All the reference algorithms use the default
+   BRCB breaks the robustness boundary in the corruption-                      data type provided in public repositories.
+sensitive model compression path. Instead of mimicking the
+dense model as the golden reference, it tries to solve this prob-              4.1       Compression Efficacy for Autonomous Driving
+lem from the principle view. The main reason that the cor-                     To evaluate the compression efficacy of BRCB and make the
+rupted samples bring misleading behavior to the embodied                       comparison with prior arts on the autonomous driving, BEV-
+AI model is that the normal feature maps (i.e., the output ac-                 Former & BEVFormer v2 [Yang et al., 2023a]1 and BEVFu-
+tivation tensors), when feeding the model with the benign in-                  sion [Liu et al., 2023b]2 are chosen as the experiment tar-
+puts, have the out-of-range or out-of-distribution outliers in-                get models for 3D object detection task. BEVFusion is cho-
+troduced by the corruption. So, the BRCB algorithm attaches                    sen as the experiment target model for bird’s-eye view (BEV)
+a BRCB gate layer before each compression target layer, like                   map segmentation task. For the state-of-the-art transformer-
+the query, key, value, linear projection, and feed-forward lay-                based compression methods, we choose the MiniViT [Zhang
+ers in the transformer structure. The primary purpose of the                   et al., 2022] and UVC [Yu et al., 2022] as the reference sparse
+BRCB gate layer is to randomly mask out some elements in                       pruning techniques, we choose the FQ-ViT [Lin et al., 2022]
+the feature maps before feeding them into the compression                      and PTQ-ViT [Liu et al., 2021b] as the reference quantiza-
+target layers during the corruption-sensitive model compres-                   tion techniques. We also choose the GPUSQ-ViT [Yu et al.,
+sion tuning process. With such regulation during training, the
+                                                                                    1
+final obtained compressed model can properly adjust when                                https://github.com/fundamentalvision/BEVFormer
+                                                                                    2
+meeting the outliers in inference with the corrupted samples.                           https://github.com/mit-han-lab/bevfusion
+
+
+
+                                                                        6890
+                               Proceedings of the Thirty-Fourth International Joint Conference on Artificial Intelligence (IJCAI-25)
+
+
+
+2023b] as the reference mixed-compression technique. The                                           periment target model for various tasks. For the state-of-the-
+comparison results for 3D object detection task and BEV                                            art transformer-based compression method, we choose the
+map segmentation task are shown in Tables 1 and 2.                                                 GPUSQ-ViT [Yu et al., 2023b]. The comparison results for
+                                                                                                   Robotics task are shown in Tables 4.
+ Model         Method        Format
+                                                  Benign    Rainy         Snowy     Dark              We evaluate on a comprehensive set of evaluation tasks
+                                                  mIoU      mIoU          mIoU      mIoU
+                                                                                                   in each environment that covers various axes of generaliza-
+               Baseline      FP32                 63.0      50.4          51.7      45.4
+               MiniViT       FP32 (Sparse)        61.1      48.9          50.1      44.0           tion, such as visual (unseen backgrounds, distractor objects,
+               UVC           FP32 (Sparse)        60.0      48.1          49.3      43.3           colors/appearances of objects); motion (unseen object posi-
+ BEVFusion     FQ-ViT        INT8                 60.4      48.4          49.6      43.5
+               PTQ-ViT       INT8                 60.6      48.6          49.8      43.7           tions/orientations); physical (unseen object sizes/shapes); and
+               GPUSQ-ViT     INT8 (Sparse)        61.9      49.6          50.9      44.7           semantic (unseen target objects, instructions, and concepts
+               BRCB          INT8 (Sparse)        62.1      56.0          57.2      51.0
+                                                                                                   from the Internet) generalization. The comparison results
+                                                                                                   shown in Table 4 show that the BRCB compressed models
+Table 2: Compare the BRCB with state-of-the-art compression
+methods on autonomous driving (BEV map segmentation) task.                                         can still steadily provide better accuracy than the prior arts
+                                                                                                   compressed models. And when facing the unseen situations,
+                                                                                                   the generalization capabilities are even against the original
+   The comparison results shown in Tables 1 and 2 show that
+                                                                                                   dense model. This experiment further proves the effective-
+BRCB can steadily provide a smaller accuracy drop for the
+                                                                                                   ness of the prposed BRCB method.
+compressed models on benign samples than both sparse prun-
+ing and quantization prior arts. And the accuracy drop com-
+                                                                                                   4.3    Visualization Experiments
+pared with the original dense baseline model is negligible in
+most cases. There is an apparent accuracy drop when nat-                                           For autonomous vehicle, real tasks are multidimensional and
+ural corruption like rain, snow, and darkness exists for the                                       more complicated. We also verify BRCB workflow and op-
+original dense models. Not to mention, the compressed mod-                                         timizing the deployment efficiency of UniverseNet [Shinya,
+els were obtained using the prior model compression tech-                                          2021] on object detection task, CondLaneNet [Liu et al.,
+niques. However, the BRCB compressed counterparts have                                             2021a] on lane detection task, Mask2Former [Cheng et al.,
+an apparent lower accuracy drop than other compressed mod-                                         2022] on segmentation task, and StereoDNN [Smolyanskiy
+els, even against the original dense model. This phenomenon                                        et al., 2018] on depth estimation task.
+proves the effectiveness of the against-corruption mechanism                                          For the deployment efficiency, the BRCB-compressed
+designed in the BRCB method. Moreover, it confirms that                                            UniverseNet model, the BRCB-compressed CondLaneNet
+the compressed model can break the robustness boundary of                                          model, the BRCB-compressed Mask2Former model and the
+the dense model.                                                                                   BRCB-compressed StereoDNN model can achieve 2.31×,
+                                                                                                   2.55×, 1.97× and 1.66× acceleration against their corre-
+                         Tasks             3D Object Detection               Segmentation          sponding dense counterparts on NVIDIA DRIVE AGX Orin
+ Model       Method      Attack Strength   1%            10%                 1%     10%
+                         Metrics           NDS mAP NDS             mAP       mIoU mIoU             platform. The corresponding visualization results are shown
+             Baseline    FP32              52.2    46.3    41.8    35.8      46.1    37.8          in Figure 5, Figure 6, and Figure 7. We can find all these au-
+             MiniViT     FP32 (Sparse)     51.1    45.2    41.0    35.0      44.7    36.7
+             UVC         FP32 (Sparse)     50.3    44.2    40.3    34.2      43.9    36.1          tonomous driving models keep their effectiveness while the
+ BEVFusion   FQ-ViT      INT8              50.6    44.5    40.5    34.4      44.2    36.3
+             PTQ-ViT     INT8              50.8    44.6    40.7    34.5      44.4    36.4          deployment efficiency is obviously improved.
+             GPUSQ-ViT   INT8 (Sparse)     51.6    45.5    41.4    35.2      45.3    37.2
+             BRCB        INT8 (Sparse)     58.9    52.4    47.2    40.5      51.7    42.4
+
+                                                                                                   5     Conclusions
+Table 3: Compare the BRCB with state-of-the-art compression
+methods on autonomous driving task with adversarial corruption.                                    In this paper, we have introduced a novel approach to enhance
+                                                                                                   the efficiency and robustness of embodied AI models through
+                                                                                                   the Boost Robust Compression Boundary (BRCB) algorithm.
+   In Table 3, we also evaluate the effectiveness of the BRCB
+                                                                                                   Our findings demonstrate that traditional model compression
+compression technique and compare it with the prior arts
+                                                                                                   techniques often fall short when applied to the unique chal-
+when facing adversarial corruption. Because adversarial cor-
+                                                                                                   lenges faced by embodied AI systems, particularly in scenar-
+ruption is manually intended to perturb the judgment of the
+                                                                                                   ios requiring rapid responses and high reliability.
+embodied AI models, we can find the accuracy drops are
+more evident than facing natural corruption. The comparison                                           The BRCB algorithm addresses these shortcomings by
+results shown in Table 3 show that the BRCB compressed                                             employing an innovative against-corruption mechanism that
+models can still steadily provide a smaller accuracy drop for                                      distinguishes between corruptions-stable and corruptions-
+the compressed models than prior arts, even against the orig-                                      sensitive model components. This fine-grained approach al-
+inal dense model. This experiment further proves the effec-                                        lows for more effective compression while maintaining the
+tiveness of the against-corruption mechanism designed in the                                       integrity of model performance across diverse conditions.
+BRCB method.                                                                                       Our experimental results indicate that models compressed
+                                                                                                   using BRCB not only achieve comparable accuracy on be-
+4.2      Compression Efficacy for Robotics                                                         nign inputs but also exhibit significantly improved resilience
+To evaluate the compression efficacy of BRCB on the                                                against various natural and adversarial corruptions.
+robotics, OpenVLA [Kim et al., 2024]3 is chosen as the ex-                                            Moreover, the BRCB method has shown a remarkable abil-
+                                                                                                   ity to push beyond the robustness boundaries established by
+   3
+       https://github.com/openvla/openvla                                                          dense models, enabling compressed models to perform better
+
+
+
+                                                                                            6891
+                          Proceedings of the Thirty-Fourth International Joint Conference on Artificial Intelligence (IJCAI-25)
+
+
+
+                                        Visual Generalization       Motion Generalization       Physical Generalization       Sementatic Generalization
+  Model        Method        Format
+                                        Success Rate(%)             Success Rate(%)             Success Rate(%)               Success Rate(%)
+               Baseline      FP32       87.0                        60.0                        76.7                          36.3
+  OpenVLA      GPUSQ-ViT     INT8       79.5                        53.6                        67.7                          29.8
+               BRCB          INT8       89.1                        61.0                        77.5                          36.7
+
+                         Table 4: Compare the BRCB with state-of-the-art compression method on robotics task.
+
+                      Object Detection                                                                  Lane Detection
+
+
+
+
+Figure 5: (Left) Visualization results of compressed UniverseNet model in object detection and tracking tasks. (The six images are captured
+with the surrounded cameras on the autonomous car.) (Right) Visualization results of compressed CondLaneNet model in lane detection task.
+
+              Urban Street                                  Downtown Crossroad                                       Parking Garage
+
+
+
+
+Figure 6: Visualization for semantic object segmentation and instance segmentation results from the compressed Mask2Former model. (The
+upper row shows the semantic object segmentation results. The lower row shows the instance segmentation results.)
+
+                        Downtown Street                                                                         Tunnel
+
+
+
+
+Figure 7: Depth estimation results by visual odometer model (the compressed StereoDNN model) deployed on NVIDIA DRIVE AGX Orin.
+
+
+than their uncompressed counterparts in challenging environ-                      method on BEV, object detection, lane detection, segmenta-
+ments. This advancement is particularly relevant for appli-                       tion, and depth estimation tasks with the real deployment ef-
+cations in autonomous driving and robotics, where safety and                      ficiency on the DRIVE AGX Orin autonomous vehicle plat-
+reliability are paramount. We also evaluate the efficacy of our                   form.
+
+
+
+
+                                                                           6892
+                         Proceedings of the Thirty-Fourth International Joint Conference on Artificial Intelligence (IJCAI-25)
+
+
+
+Ethical Statement                                                              [Hnewa and Radha, 2020] Mazin Hnewa and Hayder Radha.
+This research does not involve human or animal subjects, and                      Object detection under rainy conditions for autonomous
+therefore does not present any ethical issues related to partici-                 vehicles: A review of state-of-the-art and emerging tech-
+pant consent or welfare. The methodologies employed in this                       niques. IEEE Signal Processing Magazine, 38(1):53–67,
+study focus solely on computational models and algorithms,                        2020.
+ensuring compliance with ethical standards in artificial intel-                [Jiang et al., 2023] Yanqin Jiang, Li Zhang, Zhenwei Miao,
+ligence research.                                                                 Xiatian Zhu, Jin Gao, Weiming Hu, and Yu-Gang Jiang.
+                                                                                  Polarformer: Multi-camera 3d object detection with polar
+Acknowledgements                                                                  transformer. In Proceedings of the AAAI Conference on
+                                                                                  Artificial Intelligence, volume 37, pages 1042–1050, 2023.
+This work is supported by Shanghai Natural Science Foun-
+dation (No. 23ZR1402900), National Key Research and De-                        [Khazatsky et al., 2024] Alexander Khazatsky, Karl Pertsch,
+velopment Program of China (No. 2022ZD0160101), Shang-                            Suraj Nair, Ashwin Balakrishna, Sudeep Dasari, Siddharth
+hai Science and Technology Commission Explorer Program                            Karamcheti, Soroush Nasiriany, Mohan Kumar Srirama,
+Project (24TS1401300), Shanghai Municipal Science and                             Lawrence Yunliang Chen, Kirsty Ellis, et al. Droid: A
+Technology Major Project (No.2021SHZDZX0103).                                     large-scale in-the-wild robot manipulation dataset. arXiv
+  The computations in this research were performed using                          preprint arXiv:2403.12945, 2024.
+the CFFF platform of Fudan University.                                         [Kim et al., 2024] Moo Jin Kim, Karl Pertsch, Siddharth
+                                                                                  Karamcheti, Ted Xiao, Ashwin Balakrishna, Suraj Nair,
+References                                                                        Rafael Rafailov, Ethan Foster, Grace Lam, Pannag San-
+[Abbasi et al., 2022] Rashid Abbasi, Ali Kashif Bashir,                           keti, et al. Openvla: An open-source vision-language-
+  Hasan J Alyamani, Farhan Amin, Jaehyeok Doh, and Jian-                          action model. arXiv preprint arXiv:2406.09246, 2024.
+  wen Chen. Lidar point cloud compression, processing and                      [Laurençon et al., 2022] Hugo Laurençon, Lucile Saulnier,
+  learning for autonomous driving. IEEE Transactions on                           Thomas Wang, Christopher Akiki, Albert Villanova del
+  Intelligent Transportation Systems, 24(1):962–979, 2022.                        Moral, Teven Le Scao, Leandro Von Werra, Chenghao
+[Brohan et al., 2022] Anthony Brohan, Noah Brown, Justice                         Mou, Eduardo González Ponferrada, Huu Nguyen, et al.
+  Carbajal, Yevgen Chebotar, Joseph Dabis, Chelsea Finn,                          The bigscience roots corpus: A 1.6 tb composite multilin-
+  Keerthana Gopalakrishnan, Karol Hausman, Alex Herzog,                           gual dataset. Advances in Neural Information Processing
+  Jasmine Hsu, et al. Rt-1: Robotics transformer for real-                        Systems, 35:31809–31826, 2022.
+  world control at scale. arXiv preprint arXiv:2212.06817,                     [Li et al., 2022] Jiale Li, Hang Dai, and Yong Ding. Self-
+  2022.                                                                           distillation for robust lidar semantic segmentation in au-
+[Chen et al., 2018] Yuhua Chen, Wen Li, Christos Sakaridis,                       tonomous driving. In European Conference on Computer
+  Dengxin Dai, and Luc Van Gool. Domain adaptive faster                           Vision, pages 659–676. Springer, 2022.
+  r-cnn for object detection in the wild. In Proceedings of the                [Li et al., 2023] Jianing Li, Ming Lu, Jiaming Liu, Yandong
+  IEEE conference on computer vision and pattern recogni-                         Guo, Yuan Du, Li Du, and Shanghang Zhang. Bev-lgkd: A
+  tion, pages 3339–3348, 2018.                                                    unified lidar-guided knowledge distillation framework for
+[Cheng et al., 2022] Bowen Cheng, Ishan Misra, Alexan-                            multi-view bev 3d object detection. IEEE Transactions on
+  der G Schwing, Alexander Kirillov, and Rohit Girdhar.                           Intelligent Vehicles, 2023.
+  Masked-attention mask transformer for universal image                        [Lin et al., 2022] Yang Lin, Tianyu Zhang, Peiqin Sun,
+  segmentation. In Proceedings of the IEEE/CVF Confer-                            Zheng Li, and Shuchang Zhou. Fq-vit: Post-training quan-
+  ence on Computer Vision and Pattern Recognition, pages                          tization for fully quantized vision transformer. In Proceed-
+  1290–1299, 2022.                                                                ings of the Thirty-First International Joint Conference on
+[Chi et al., 2023] Cheng Chi, Zhenjia Xu, Siyuan Feng, Eric                       Artificial Intelligence, IJCAI-22, pages 1173–1179, 2022.
+  Cousineau, Yilun Du, Benjamin Burchfiel, Russ Tedrake,                       [Liu et al., 2021a] Lizhe Liu, Xiaohao Chen, Siyu Zhu, and
+  and Shuran Song. Diffusion policy: Visuomotor policy                            Ping Tan. Condlanenet: a top-to-down lane detection
+  learning via action diffusion. The International Journal of                     framework based on conditional convolution. In Proceed-
+  Robotics Research, page 02783649241273668, 2023.                                ings of the IEEE/CVF International Conference on Com-
+[Diffenderfer et al., 2021] James Diffenderfer, Brian Bar-                        puter Vision, pages 3773–3782, 2021.
+  toldson, Shreya Chaganti, Jize Zhang, and Bhavya                             [Liu et al., 2021b] Zhenhua Liu, Yunhe Wang, Kai Han, Wei
+  Kailkhura. A winning hand: Compressing deep networks                            Zhang, Siwei Ma, and Wen Gao. Post-training quantiza-
+  can improve out-of-distribution robustness. Advances in                         tion for vision transformer. Advances in Neural Informa-
+  neural information processing systems, 34:664–676, 2021.                        tion Processing Systems, 34:28092–28103, 2021.
+[Gui et al., 2019] Shupeng Gui, Haotao Wang, Haichuan                          [Liu et al., 2023a] Yingfei Liu, Junjie Yan, Fan Jia, Shuailin
+  Yang, Chen Yu, Zhangyang Wang, and Ji Liu. Model com-                           Li, Aqi Gao, Tiancai Wang, Xiangyu Zhang, and Jian Sun.
+  pression with adversarial robustness: A unified optimiza-                       Petrv2: A unified framework for 3d perception from multi-
+  tion framework. Advances in Neural Information Process-                         camera images. In Proceedings of the IEEE International
+  ing Systems, 32, 2019.                                                          Conference on Computer Vision, 2023.
+
+
+
+                                                                        6893
+                        Proceedings of the Thirty-Fourth International Joint Conference on Artificial Intelligence (IJCAI-25)
+
+
+
+[Liu et al., 2023b] Zhijian Liu, Haotian Tang, Alexander                        versarial training for human motion synthesis and control.
+   Amini, Xinyu Yang, Huizi Mao, Daniela L Rus, and Song                        IEEE transactions on visualization and computer graph-
+   Han. Bevfusion: Multi-task multi-sensor fusion with uni-                     ics, 27(1):14–28, 2019.
+   fied bird’s-eye view representation. In 2023 IEEE Inter-                   [Wang et al., 2023] Shunxin Wang, Raymond Veldhuis,
+   national Conference on Robotics and Automation (ICRA),                       Christoph Brune, and Nicola Strisciuglio. A survey on
+   pages 2774–2781. IEEE, 2023.                                                 the robustness of computer vision models against common
+[Luo et al., 2022] Rui Luo, Chunpeng Wang, Eric Schwarm,                        corruptions. arXiv preprint arXiv:2305.06024, 2023.
+   Colin Keil, Evelyn Mendoza, Pushyami Kaveti, Stephen                       [Xie et al., 2024] Annie Xie, Lisa Lee, Ted Xiao, and
+   Alt, Hanumant Singh, TaŞkin Padir, and John Peter Whit-                     Chelsea Finn. Decomposing the generalization gap in im-
+   ney. Towards robot avatars: Systems and methods for                          itation learning for visual robotic manipulation. In 2024
+   teleinteraction at avatar xprize semi-finals. In 2022                        IEEE International Conference on Robotics and Automa-
+   IEEE/RSJ international conference on intelligent robots                      tion (ICRA), pages 3153–3160. IEEE, 2024.
+   and systems (IROS), pages 7726–7733. IEEE, 2022.
+                                                                              [Yan et al., 2018] Ziang Yan, Yiwen Guo, and Changshui
+[Mees et al., 2024] Oier Mees, Dibya Ghosh, Karl Pertsch,
+                                                                                Zhang. Deep defense: Training dnns with improved ad-
+   Kevin Black, Homer Rich Walke, Sudeep Dasari, Joey                           versarial robustness. Advances in Neural Information Pro-
+   Hejna, Tobias Kreiman, Charles Xu, Jianlan Luo, et al.                       cessing Systems, 31, 2018.
+   Octo: An open-source generalist robot policy. In First
+   Workshop on Vision-Language Models for Navigation and                      [Yang et al., 2023a] Chenyu Yang, Yuntao Chen, Hao Tian,
+   Manipulation at ICRA 2024, 2024.                                             Chenxin Tao, Xizhou Zhu, Zhaoxiang Zhang, Gao Huang,
+[Shen et al., 2021] Yu Shen, Laura Zheng, Manli Shu, Weizi                      Hongyang Li, Yu Qiao, Lewei Lu, et al. Bevformer
+                                                                                v2: Adapting modern image backbones to bird’s-eye-view
+   Li, Tom Goldstein, and Ming Lin. Gradient-free adver-
+                                                                                recognition via perspective supervision. In Proceedings of
+   sarial training against image corruption for learning-based
+                                                                                the IEEE/CVF Conference on Computer Vision and Pat-
+   steering. Advances in Neural Information Processing Sys-
+                                                                                tern Recognition, pages 17830–17839, 2023.
+   tems, 34:26250–26263, 2021.
+                                                                              [Yang et al., 2023b] Jing Yang, Nade Liang, Brandon J Pitts,
+[Shinya, 2021] Yosuke Shinya. Usb: Universal-scale object
+                                                                                Kwaku O Prakah-Asante, Reates Curry, Mike Blommer,
+   detection benchmark. arXiv preprint arXiv:2103.14027,
+                                                                                Radhakrishnan Swaminathan, and Denny Yu. Multi-
+   2021.
+                                                                                modal sensing and computational intelligence for situa-
+[Smolyanskiy et al., 2018] Nikolai Smolyanskiy, Alexey                          tion awareness classification in autonomous driving. IEEE
+   Kamenev, and Stan Birchfield. On the importance of                           Transactions on Human-Machine Systems, 53(2):270–
+   stereo for accurate depth estimation: An efficient semi-                     281, 2023.
+   supervised deep neural network approach. In Proceedings
+                                                                              [Yu et al., 2022] Shixing Yu, Tianlong Chen, Jiayi Shen,
+   of the IEEE conference on computer vision and pattern
+   recognition workshops, pages 1007–1015, 2018.                                Huan Yuan, Jianchao Tan, Sen Yang, Ji Liu, and
+                                                                                Zhangyang Wang. Unified visual transformer compres-
+[Tinchev et al., 2019] Georgi Tinchev, Adrian Penate-                           sion. In International Conference on Learning Represen-
+   Sanchez, and Maurice Fallon. Learning to see the wood                        tations, 2022.
+   for the trees: Deep laser localization in urban and natural
+                                                                              [Yu et al., 2023a] Chong Yu, Tao Chen, and Zhongxue Gan.
+   environments on a cpu. IEEE Robotics and Automation
+   Letters, 4(2):1327–1334, 2019.                                               Adversarial amendment is the only force capable of trans-
+                                                                                forming an enemy into a friend. In Proceedings of the
+[Touvron et al., 2023] Hugo Touvron, Louis Martin, Kevin                        Thirty-Second International Joint Conference on Artificial
+   Stone, Peter Albert, Amjad Almahairi, Yasmine Babaei,                        Intelligence, pages 4522–4530, 2023.
+   Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava,
+   Shruti Bhosale, et al. Llama 2: Open foundation and                        [Yu et al., 2023b] Chong Yu, Tao Chen, Zhongxue Gan,
+   fine-tuned chat models. arXiv preprint arXiv:2307.09288,                     and Jiayuan Fan. Boost vision transformer with gpu-
+   2023.                                                                        friendly sparsity and quantization. In Proceedings of the
+                                                                                IEEE/CVF Conference on Computer Vision and Pattern
+[Walke et al., 2023] Homer Rich Walke, Kevin Black,                             Recognition, pages 22658–22668, 2023.
+   Tony Z Zhao, Quan Vuong, Chongyi Zheng, Philippe
+   Hansen-Estruch, Andre Wang He, Vivek Myers, Moo Jin                        [Yu, 2021] Chong Yu. Minimally invasive surgery for sparse
+   Kim, Max Du, et al. Bridgedata v2: A dataset for robot                       neural networks in contrastive manner. In Proceedings of
+   learning at scale. In Conference on Robot Learning, pages                    the IEEE/CVF Conference on Computer Vision and Pat-
+   1723–1736. PMLR, 2023.                                                       tern Recognition, pages 3589–3598, 2021.
+[Wan et al., 2021] Zishen Wan, Bo Yu, Thomas Yuang Li,                        [Zhang et al., 2022] Jinnian Zhang, Houwen Peng, Kan Wu,
+   Jie Tang, Yuhao Zhu, Yu Wang, Arijit Raychowdhury, and                       Mengchen Liu, Bin Xiao, Jianlong Fu, and Lu Yuan.
+   Shaoshan Liu. A survey of fpga-based robotic computing.                      Minivit: Compressing vision transformers with weight
+   IEEE Circuits and Systems Magazine, 21(2):48–74, 2021.                       multiplexing. In Proceedings of the IEEE/CVF Confer-
+                                                                                ence on Computer Vision and Pattern Recognition, pages
+[Wang et al., 2019] Zhiyong Wang, Jinxiang Chai, and Shi-
+                                                                                12145–12154, 2022.
+   hong Xia. Combining recurrent neural networks and ad-
+
+
+
+                                                                       6894
+

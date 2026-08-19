@@ -1,0 +1,9 @@
+{
+  "workbench.editorAssociations": {
+    "*.pdf": "pdf.preview"
+  },
+  "commentTranslate.sourceLanguage": "auto",
+  "commentTranslate.targetLanguage": "zh-CN",
+  "commentTranslate.source": "Bing",
+  "commentTranslate.hover.enabled": true
+}

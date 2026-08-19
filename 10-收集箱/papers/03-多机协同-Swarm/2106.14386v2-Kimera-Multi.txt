@@ -1,0 +1,1228 @@
+                                                                   This paper has been accepted for publication in the IEEE Transactions on Robotics.
+                                                    Please cite the paper as: Y. Tian, Y. Chang, F. Herrera Arias, C. Nieto-Granda, J. P. How, and L. Carlone,
+                                                            “Kimera-Multi: Robust, Distributed, Dense Metric-Semantic SLAM for Multi-Robot Systems”,                                   1
+
+                                                                                    IEEE Transactions on Robotics (T-RO), 2022.
+
+                                                           Kimera-Multi: Robust, Distributed, Dense
+                                                        Metric-Semantic SLAM for Multi-Robot Systems
+                                                             Yulun Tian ID , Yun Chang ID , Fernando Herrera Arias ID , Carlos Nieto-Granda ID ,
+                                                                                       Jonathan P. How ID , and Luca Carlone ID
+
+
+
+                                             Abstract—Multi-robot Simultaneous Localization and Map-                 due to its capability to provide situational awareness over
+                                         ping (SLAM) is a crucial capability to obtain timely situational            large-scale environments for extended periods of time. Such
+                                         awareness over large areas. Real-world applications demand
+arXiv:2106.14386v2 [cs.RO] 17 Dec 2021
+
+
+
+
+                                         multi-robot SLAM systems to be robust to perceptual aliasing and            capability is fundamental for various applications such as
+                                         to operate under limited communication bandwidth; moreover,                 factory automation, search & rescue, intelligent transportation,
+                                         it is desirable for these systems to capture semantic information           planetary exploration, and surveillance and monitoring in
+                                         to enable high-level decision-making and spatial AI.                        military and civilian endeavors.
+                                             This paper presents Kimera-Multi, a multi-robot system that                In this work, we advance state-of-the-art collaborative
+                                         (i) is robust and capable of identifying and rejecting incorrect
+                                         inter and intra-robot loop closures resulting from perceptual               SLAM by developing a system that enables real-time estima-
+                                         aliasing, (ii) is fully distributed and only relies on local (peer-         tion of dense metric-semantic 3D mesh models under realistic
+                                         to-peer) communication to achieve distributed localization and              constraints on communication bandwidth. The 3D mesh cap-
+                                         mapping, and (iii) builds a globally consistent metric-semantic             tures the complete and dense geometry of the environment that
+                                         3D mesh model of the environment in real-time, where faces                  the robots operate in. Furthermore, by annotating the mesh
+                                         of the mesh are annotated with semantic labels. Kimera-Multi is
+                                         implemented by a team of robots equipped with visual-inertial               with human-understandable semantic labels (e.g., “building”,
+                                         sensors. Each robot builds a local trajectory estimate and a local          “road”, “object”), our system provides high-level abstractions
+                                         mesh using Kimera. When communication is available, robots                  of the environment that are necessary to enable next-generation
+                                         initiate a distributed place recognition and robust pose graph              spatial perception [1] (or Spatial AI [2]) and high-level deci-
+                                         optimization protocol based on a distributed graduated non-                 sion making. In single-robot SLAM, metric-semantic models
+                                         convexity algorithm. The proposed protocol allows the robots
+                                         to improve their local trajectory estimates by leveraging inter-            have been employed in pioneering work such as SLAM++ [3]
+                                         robot loop closures while being robust to outliers. Finally, each           and SemanticFusion [4]. Recent work includes systems that
+                                         robot uses its improved trajectory estimate to correct the local            can build metric-semantic 3D models in real-time using a
+                                         mesh using mesh deformation techniques.                                     multi-core CPU, including Kimera [1] and Voxblox++ [5].
+                                             We demonstrate Kimera-Multi in photo-realistic simulations,
+                                                                                                                     In multi-robot SLAM, many existing systems rely on sparse
+                                         SLAM benchmarking datasets, and challenging outdoor datasets
+                                         collected using ground robots. Both real and simulated exper-               landmarks (e.g., [6, 7]). While these systems excel at collab-
+                                         iments involve long trajectories (e.g., up to 800 meters per                orative localization, they do not provide a complete solution
+                                         robot). The experiments show that Kimera-Multi (i) outperforms              to dense mapping, which is required by critical navigation
+                                         the state of the art in terms of robustness and accuracy, (ii)              tasks such as collision avoidance and motion planning. On
+                                         achieves estimation errors comparable to a centralized SLAM
+                                                                                                                     the other hand, recent multi-robot systems begin to leverage
+                                         system while being fully distributed, (iii) is parsimonious in terms
+                                         of communication bandwidth, (iv) produces accurate metric-                  semantic information to aid collaborative SLAM, but the
+                                         semantic 3D meshes, and (v) is modular and can be also used for             underlying representations are still sparse (e.g., objects [8, 9]).
+                                         standard 3D reconstruction (i.e., without semantic labels) or for           Recent work [10] employs dense semantic segmentation, but
+                                         trajectory estimation (i.e., without reconstructing a 3D mesh).             the approach is limited to pairwise matching of local maps.
+                                                          S UPPLEMENTARY M ATERIAL                                   Overall, there has not been a complete multi-robot system for
+                                            Video demonstration of the proposed Kimera-Multi system on               dense metric-semantic SLAM, partially due to the additional
+                                         the Medfield dataset (Fig. 1): https://youtu.be/G7I3JubdU8E.                communication and computation costs involved in building
+                                                                                                                     such a model. This work closes this gap by developing a
+                                                             I. I NTRODUCTION
+                                           Multi-robot collaborative simultaneous localization and                   collaborative metric-semantic SLAM system. Furthermore, the
+                                         mapping (SLAM) is an important topic in robotics research,                  proposed system is fully distributed and is capable of operating
+                                                                                                                     under realistic communication constraints.
+                                            Y. Tian, Y. Chang, F. Herrera Arias, J.P. How, and L. Carlone are with      In addition, this work aims to improve the robustness
+                                         the Laboratory for Information & Decision Systems, Massachusetts In-
+                                         stitute of Technology, Cambridge, MA, USA, {yulun,yunchang,luisfer,         of collaborative SLAM for operations in challenging real-
+                                         jhow,lcarlone}@mit.edu. C. Nieto-Granda is with the U.S. Army Combat        world environments. In practice, perceptual aliasing caused
+                                         Capabilities Development Command, Army Research Laboratory, Adelphi,        by similar-looking scenes often results in wrong inter-robot
+                                         MD, USA, cnietogr@mit.edu.
+                                            This work was supported in part by ARL Distributed and Collaborative     data associations (i.e., outlier loop closures), which in turn
+                                         Intelligent Systems and Technology Collaborative Research Alliance (DCIST   cause catastrophic failures of standard estimation back-ends.
+                                         CRA) under agreement W911NF-17-2-0181, in part by ONR under BRC             In multi-robot SLAM, this issue is further complicated by the
+                                         award N000141712072, in part by Lincoln Laboratory’s Resilient Perception
+                                         in Degraded Environment Program, in part by Carlone’s Amazon Research       lack of a common reference frame and a global outlier-free
+                                         Award, and in part by Mathworks.                                            odometry backbone. While recent work has proposed several
+                                                                                                                                        2
+
+
+
+                                                                          local trajectory and 3D mesh estimates. When communication
+                                                                          becomes available, a fully distributed procedure is triggered
+                                                                          to perform inter-robot place recognition, relative pose estima-
+                                                                          tion, and robust distributed trajectory estimation. From the
+                                                                          jointly optimized trajectory estimates, each robot performs
+                                                                          real-time local mesh deformation to correct local mapping
+                                                                          drift and improve global map consistency. The implementation
+                                                                          of Kimera-Multi is modular and allows different components to
+                                                                          be disabled or replaced. Fig. 1 demonstrates Kimera-Multi on a
+                                                                          three-robot collaborative SLAM dataset collected at Medfield,
+                                                                          Massachusetts, USA.
+                                                                             The second technical contribution of this work is a new,
+                   (a) Kimera-VIO trajectory estimate                     two-stage method for outlier-robust distributed pose graph
+                                                                          optimization (PGO), which serves as the distributed back-
+                                                                          end of Kimera-Multi. The first stage initializes robots’ local
+                                                                          trajectories in a global reference frame by using GNC [15]
+                                                                          to estimate relative transformations between the coordinate
+                                                                          frames of pairs of robots. This method is robust to outlier
+                                                                          loop closures and, furthermore, is efficient because it does
+                                                                          not require iterative communication. The second stage solves
+                                                                          the full robust PGO problem. For this purpose, we present
+                                                                          a distributed extension of GNC built on top of the state-
+                                                                          of-the-art RBCD solver [17]. Compared to prior techniques,
+                                                                          our approach achieves more robust and accurate trajectory
+                                                                          estimation, and is less sensitive to parameter tuning.
+                                                                             Our third contribution is an extensive experimental eval-
+                   (b) Kimera-Multi trajectory estimate                   uation. We present quantitative evaluations of Kimera-Multi
+                                                                          on a collection of large-scale photo-realistic simulations and
+                                                                          SLAM benchmarking datasets. In addition, we demonstrate
+                                                                          Kimera-Multi on challenging real-world datasets collected by
+                                                                          autonomous ground robots. Our results show that Kimera-Multi
+                                                                          (i) provides more robust and accurate distributed trajectory
+                                                                          estimation compared to alternative techniques employed in
+                                                                          prior work [13, 14], (ii) achieves estimation accuracy that is
+                                                                          similar to a centralized system while being fully distributed,
+                                                                          (iii) is communication-efficient and achieves as much as 70%
+                                                                          communication reduction compared to baseline centralized
+                                                                          systems, (iv) builds accurate metric-semantic 3D meshes, (v)
+                                                                          is modular and allows different features such as mesh recon-
+                    (c) Kimera-Multi optimized mesh                       struction and semantic annotation to be disabled according to
+Fig. 1: Demonstration of Kimera-Multi in a three-robot collaborative      user needs.
+SLAM dataset collected at Medfield, Massachusetts, USA. Total                Novelty with respect to previous work [18]. An earlier
+trajectory length (including all robots) is 2188 meters. (a) Trajectory   version of Kimera-Multi was presented in [18], but the present
+estimate from Kimera-VIO is affected by estimation drift. (b) Kimera-     paper extends that work with two new contributions. First,
+Multi achieves accurate and robust trajectory estimation. (c) Kimera-
+Multi also produces an optimized 3D mesh of the environment.              we develop an outlier-robust and fully distributed trajectory
+                                                                          estimation method based on GNC. In [18], we used an
+robust estimation techniques for collaborative SLAM, they                 incremental extension of Pairwise Consistency Maximization
+either rely too heavily on initialization [11, 12] or employ              (PCM) [13] to reject outlier loop closures. However, PCM
+heuristic search methods [13, 14] which can cause low recall              employs a graph-theoretic formulation and in practice relies
+(i.e., missing correct loop closures). This work addresses this           on heuristic maximum clique search which causes low recall.
+challenge by developing a robust distributed back-end based               In this work, we show that the proposed distributed GNC
+on graduated non-convexity (GNC) [15].                                    method outperforms PCM in terms of robustness and accuracy,
+   Contributions. The primary contribution of this work is                and is less sensitive to parameter tuning. The second new
+Kimera-Multi, a fully distributed system for multi-robot dense            contribution is a set of additional experimental evaluations.
+metric-semantic SLAM. Our system enables a team of robots                 These include a comprehensive evaluation of different ro-
+to collaboratively estimate a semantically annotated 3D mesh              bust distributed PGO techniques (Section VII-A), evaluations
+model of the environment in real-time. Each robot runs Kimera             on additional photo-realistic simulations and benchmarking
+[16] to process onboard visual-inertial sensor data and obtain            datasets (Section VII-B), and evaluations on two new chal-
+                                                                                                                                       3
+
+
+
+lenging outdoor datasets (Fig. 1 and Fig. 14) collected using         tralized approaches for multi-robot PGO collect all measure-
+autonomous ground robots (Section VII-C).                             ments at a central station, which computes the trajectory esti-
+                                                                      mates for all the robots [46–49, 12]. In parallel, considerable
+                      II. R ELATED W ORK                              efforts have been made to design distributed PGO methods.
+A. Metric-Semantic SLAM                                               Cunningham et al. [6, 33] use Gaussian elimination to ex-
+   In recent years, single-robot SLAM research is steadily            change marginals over the separator poses. Another family
+moving towards systems that can build metric-semantic                 of approaches are based on distributed gradient descent [50–
+maps [19–22, 4, 23–29, 16, 5, 30]. Related research efforts in-       52]. Aragues et al. [53] use a distributed Jacobi approach
+clude systems building voxel-based models [4, 23–29], ESDF            to estimate 2D poses. Choudhary et al. [8] propose a two-
+and meshes [16, 31, 5], or 3D scene graphs [30]. In this work,        stage approach that uses distributed Gauss-Seidel method to
+we build our multi-robot metric-semantic SLAM system on               initialize rotation estimates and solve a single Gauss-Newton
+top of Kimera [16], which provides accurate real-time visual-         iteration. This method is also implemented as the distributed
+inertial odometry (VIO) and lightweight mesh reconstruction.          back-end in recent decentralized SLAM systems [7, 14].
+   In the multi-robot SLAM literature, the majority of ap-            Recently, Fan and Murphey [54] propose a majorization-
+proaches have focused on dense geometric representations              minimization method that adapts Nesterov’s acceleration tech-
+(e.g., occupancy maps [32]) or sparse landmark maps [6, 33];          nique to achieve significant empirical speedup. Tian et al. [17]
+see [34] and the references therein. Recent work begins to            develop the Riemannian block-coordinate descent (RBCD)
+incorporate sparse objects or dense semantic information in           method that can be similarly accelerated, and furthermore
+multi-robot perception. Choudhary et al. [8] use class labels         propose a distributed global optimality verification method
+to associate objects within a multi-robot pose graph SLAM             based on accelerated power iteration. The conference version
+framework. Tchuiev and Indelman [9] develop a distributed             of Kimera-Multi [18] uses RBCD as the distributed back-end. A
+object-based SLAM method that leverages the coupling be-              subsequent work [55] develops distributed PGO with conver-
+tween object classification and pose estimation. Yue et al. [10]      gence guarantees under asynchronous communication.
+leverage dense semantic segmentation to perform relative
+localization and map matching between pairs of robots. In             D. Robust PGO
+[18], we presented an early version of Kimera-Multi and demon-
+strated it as the first fully distributed system for multi-robot         Standard least squares formulation of PGO is susceptible
+dense metric-semantic SLAM. The present paper extends [18]            to outlier loop closures that can severely impact trajectory
+with a new outlier-robust distributed pose graph optimization         estimation. To mitigate the effect of outliers in single-robot
+algorithm and additional experimental evaluations.                    SLAM, early methods are based on RANSAC [56], branch
+                                                                      & bound [57], and M-estimation ([58, 59]). Sünderhauf and
+                                                                      Protzel [60] develop a method to deactivate outliers using
+B. Distributed Loop Closure Detection
+                                                                      binary variables. Agarwal et al. [61] build on the same
+   Inter-robot loop closures are critical to align the trajectories   idea and develop the dynamic covariance scaling method.
+of the robots in a common reference frame and to improve              Hartley et al. [62] and Casafranca et al. [63] propose to
+their trajectory estimates. In a centralized visual SLAM system       minimize the `1-norm of residual errors. Chatterjee and
+(e.g., [35]), robots transmit a combination of global descriptors     Govindu [64, 65] develop iteratively reweighted least squares
+(e.g., bag-of-words vectors [36, 37] and learned full-image           (IRLS) methods to solve rotation averaging using a family of
+descriptors [38]) and local visual features (e.g., [39, 40]) to       robust cost functions. Hu et al. [66] develop similar IRLS
+a central server that performs centralized place recognition          methods for single-robot SLAM. Olson and Agarwal [67]
+and geometric verification. Recent work develops distributed          and Pfingsthorn and Birk [68, 69] consider multi-modal dis-
+and communication-efficient paradigms for inter-robot loop            tributions for the noise. Lajoie et al. [70] and Carlone
+closure detection. Cieslewski and Scaramuzza [41] propose             and Calafiore [71] develop global solvers based on convex
+an efficient method for distributed visual place recognition,         relaxations. A separate line of work investigates consensus
+based on splitting and distributing bag-of-words visual fea-          maximization formulations that seek to identify the max-
+tures [36]. A subsequent approach is developed in [42, 7] based       imal set of mutually consistent inliers [72–74]. Recently,
+on clustering and distributing NetVLAD [38] descriptors. A            Yang et al. [15] develop graduated non-convexity (GNC) that
+complementary line of work develops efficient methods for             optimizes a sequence of increasingly non-convex surrogate
+distributed geometric verification. Giamou et al. [43] develop        cost functions, and demonstrate state-of-the-art performance
+a method to verify a set of candidate inter-robot loop closures       on robust PGO problems.
+using minimum data exchange. Tian et al. [44, 45] consider               In multi-robot SLAM, Indelman et al. [11] and
+distributed geometric verification under communication and            Dong et al. [12] apply expectation-maximization to find
+computation budgets and develop near-optimal communication            consistent inter-robot loop closures and estimate initial relative
+policies based on submodular optimization.                            transformations between robots. Mangelson et al. [13] design
+                                                                      the Pairwise Consistency Maximization (PCM) approach
+C. Distributed PGO                                                    to perform robust map merging between pairs of robots.
+   Pose graph optimization (PGO) is commonly used as the              Lajoie et al. [14] develop the DOOR-SLAM system which
+estimation backbone of state-of-the-art SLAM systems. Cen-            implements an extended version of PCM as the outlier
+                                                                                                                                             4
+
+
+
+     Stereo / Semantic / Depth Images                IMU
+                                                                                   BoW              keypoints
+                                                                                   vector          descriptors
+           Kimera-Semantics                      Kimera-VIO
+
+
+     Incremental Mesh        Odometry     BoW / Keypoints / Descriptors
+                                                                                    Dist. Loop Closure Detection     Robust Dist. PGO
+                                        Dist. Loop Closure Detection
+                                                                          Fig. 3: Communication protocol and data flow between pair of robots.
+      Local Mesh
+      Optimization
+                            Optimized        Robust Dist. PGO                Robust Distributed Trajectory Estimation (Section V)
+                           Pose Graph
+                                                                          solves for the optimal trajectory estimates of all robots in
+     Optimized Mesh                          Optimized Trajectory         a global reference frame, by performing robust distributed
+                                                                          PGO using odometric measurements from Kimera-VIO and all
+Fig. 2: Kimera-Multi: system architecture. Each robot runs Kimera (in-    putative loop closures detected so far. At the beginning, a
+cluding Kimera-VIO and Kimera-Semantics) to estimate local trajectory
+and mesh. Robots then communicate to perform distributed loop             robust initialization scheme is used to find coarse relative
+closure detection and robust distributed PGO. Given the optimized         transformations between robots’ reference frames. Then, a
+trajectory, each robot performs local mesh optimization.                  robust optimization procedure based on a distributed extension
+                                                                          of GNC [15] using the RBCD solver [17] is employed to
+rejection method before distributed trajectory estimation.                simultaneously select inlier loop closures and recover optimal
+The recent NeBula system [75] also employs PCM within a                   trajectory estimates. Compared to the incremental PCM tech-
+centralized collaborative SLAM architecture. In this work,                nique [13] used in the conference version of Kimera-Multi [18],
+we develop a fully distributed extension of GNC [15], and                 our new approach enables more robust and accurate trajectory
+demonstrate that our method outperforms PCM in terms of                   estimation, and is less sensitive to parameter tuning.
+robustness and accuracy.                                                     Local Mesh Optimization (Section VI) is executed after
+                                                                          the robust distributed trajectory estimation stage. This module
+                        III. S YSTEM OVERVIEW                             performs a local processing step that deforms the mesh at
+   In Kimera-Multi, each robot runs the fully decentralized               each robot to enforce consistency with the trajectory estimate
+metric-semantic SLAM system shown in Fig. 2. The system                   resulting from distributed PGO.
+                                                                             Kimera-Multi is implemented in C++ and uses the Robot Op-
+consists of four main modules: (i) local (single-robot) Kimera,
+(ii) distributed loop closure detection, (iii) robust distributed         erating System (ROS) [77] as a communication layer between
+trajectory estimation via PGO, and (iv) local mesh optimiza-              robots and between the modules executed on each robot. The
+tion. Among these modules, distributed loop closure detection             system runs online using a CPU and is modular, thus allowing
+and robust distributed PGO are the only ones that involve                 modules to be replaced or removed. For instance, the system
+communication between robots. Fig. 3 shows the data flow                  can also produce a dense metric mesh if semantic labels are
+between these modules.                                                    not available, or only produce the optimized trajectory if the
+   Kimera [1] runs onboard each robot and provides real-                  dense reconstruction is not required by the user.
+time local trajectory and mesh estimation. In particular, Kimera-
+VIO [16] serves as the visual-inertial odometry module, which                   IV. D ISTRIBUTED L OOP C LOSURE D ETECTION
+processes raw stereo images and IMU data to obtain an                        This section describes the front-end of Kimera-Multi, which
+estimate of the odometric trajectory of the robot. Kimera-                is responsible for detecting inter-robot loop closures between
+Semantics [16] processes depth images (possibly obtained from             pairs of robots. The information flow is summarized in Fig. 3.
+RGB-D cameras or by stereo matching) and 2D semantic                      When communication becomes available, robot α initiates the
+segmentations [76] and produces a dense metric-semantic                   distributed loop closure detection process, by sending global
+3D mesh using the VIO pose estimates. In addition, Kimera-                descriptors of its new keyframes since the last rendezvous
+VIO computes a Bag-of-Words (BoW) representation of each                  to the other robot β. We implement these descriptors as
+keyframe using ORB features and DBoW2 [37], which is used                 bag-of-word vectors using the DBoW2 library [37]. Upon
+for distributed loop closure detection. Interested readers are            receiving the bag-of-word vectors, robot β searches within
+referred to [16, 1] for more technical details.                           its own keyframes for candidate matches whose normalized
+   Distributed Loop Closure Detection (Section IV) is                     visual similarity scores exceed a threshold (≥ 0.1 in our
+executed whenever two robots α and β are within commu-                    code). When a potential loop closure is identified, the robots
+nication range. The robots exchange BoW descriptors of the                perform standard geometric verification to estimate the relative
+keyframes they collected. When the robots find a pair of                  transformation between the two matched keyframes. In our
+matching descriptors (typically corresponding to observations             implementation, robot β first requests the 3D keypoints and
+of the same place), they perform relative pose estimation using           associated descriptors of the matched keyframe from robot
+standard geometric verification techniques. The relative pose             α (Fig. 3). Subsequently, robot β computes putative cor-
+corresponds to a putative inter-robot loop closure, and is used           respondences by matching the two sets of feature descrip-
+during robust distributed trajectory estimation.                          tors using nearest neighbor search implemented in OpenCV
+                                                                                                                                   5
+
+
+
+[78]. From the putative correspondences, robot β attempts to       Algorithm 1 Distributed Graduated Non-Convexity (D-GNC)
+compute the relative transformation using Nistér’s five-point      Input:
+method [79] and Arun’s three-point method [80] combined                - Initial trajectory estimates in local frames of each robot
+with RANSAC [56]. Both techniques are implemented in the               - Odometry and intra-robot and inter-robot loop closures
+OpenGV library [81]. If geometric verification succeeds with           that each robot is involved in
+more than five correspondences, the loop closure is accepted           - Threshold c̄ of truncated least squares (TLS) cost
+and sent to the robust distributed trajectory estimation module.   Output:
+                                                                       - Optimized trajectory estimate of each robot in global
+   V. ROBUST D ISTRIBUTED T RAJECTORY E STIMATION                      frame
+                                                                    1: Robust initialization: robots communicate to initialize
+   In Kimera-Multi, the robots estimate their trajectories by          trajectory estimates in a global reference frame (Sec-
+collaboratively solving a PGO problem using the entire team’s          tion V-B).
+odometry measurements and intra-robot and inter-robot loop          2: In parallel, each robot initializes GNC weights for its local
+closures. Some of these loop closures may be outliers (due to,         intra and inter-robot loop closures wi = 1, ∀i.
+e.g., perceptual aliasing) and thus we need an outlier-robust       3: while not converged do
+method for solving PGO. In the earlier version of Kimera-           4:     Variable update: with fixed weights, robots commu-
+Multi [18], we used an incremental variant of PCM [13] for
+                                                                       nicate to execute RBCD for T iterations (default T = 15).
+outlier rejection via maximum clique computation prior to           5:     Weight update: in parallel, each robot updates GNC
+trajectory estimation. However, even with parallelization [82],        weights for intra-robot loop closures and inter-robot loop
+the runtime of exact maximum clique search exceeds 10                  closures it is involved in.
+seconds already in graphs with 700 loop closures, which is          6:     Parameter update: in parallel, each robot updates the
+not practical for our application. For this reason, in practice        control parameter µ.
+PCM has to rely on heuristic maximum clique algorithms and          7: end while
+thus often exhibits poor recall, as shown in Section VII-A.
+   In this paper, we propose a new distributed approach for
+robust trajectory estimation based on GNC [15]. The main
+idea in GNC is to start from a convex approximation of the         function. Each surrogate problem takes the same form as
+robust cost function and then gradually introduce the non-         classical M-estimation,
+convexity to prevent convergence to spurious solutions. While                               X
+                                                                                        min    ρµ (ri (x)),            (1)
+in general GNC does not require an initial guess [15], it has                             x∈X
+                                                                                                    i
+been observed that global solvers for 3D SLAM (e.g., SE-
+Sync [83]) become too slow in the presence of outliers [74].       where ri : X → R is the residual error associated with the
+For this reason, in [74] local optimization is performed instead   ith measurement. The sequence of surrogate functions ρµ ,
+at each iteration of GNC (starting from an outlier-free initial    parameterized by control parameter µ, satisfies that for some
+guess), and this approach has been shown to be very effective.     given constants µ0 and µ1 : (i) for µ → µ0 , the function ρµ
+In single-robot SLAM, one can easily obtain an outlier-free        is convex, and (ii) for µ → µ1 , ρµ converges to the original
+initial guess by chaining together odometry measurements. In       (non-convex) robust cost function ρ. In practice, one initializes
+the multi-robot case, there is no odometry between different       µ near µ0 , and gradually updates its value to approach µ1 as
+robots’ poses, and the challenge thus becomes building an          optimization proceeds.
+initial guess that is insensitive to outliers.                        For each instance of (1), GNC reformulates the problem
+   To address the aforementioned challenge, the proposed           using the Black-Rangarajan Duality [84], which states that
+distributed graduated non-convexity (D-GNC) approach in-           under certain technical conditions (satisfied by all common
+volves two stages. In the first stage (Section V-B), we use an     choices of robust cost functions), (1) is equivalent to the
+outlier-robust and communication-efficient method to initialize    following optimization problem,
+robots’ trajectories in a global reference frame. In the second                             X
+stage (Section V-C), we develop a fully distributed procedure                     min          [wi ri2 (x) + Φρµ (wi )],         (2)
+                                                                               x∈X ,wi ∈[0,1]
+to execute GNC, using the RBCD distributed solver as a                                          i
+subroutine. Algorithm 1 provides the pseudocode of D-GNC.
+                                                                   where wi ∈ [0, 1] is a scalar weight associated with the ith
+                                                                   measurement. In (2), the outlier process Φρµ (wi ) introduces
+A. Background: Graduated Non-Convexity                             a penalty term for each wi , and its expression depends on
+  We start by providing a brief review of GNC [15, 84]. One        the chosen robust cost function ρ and the control parameter
+challenge associated with classical M-estimation [85, 86] is       µ. Similar to the classical iterative reweighted least squares
+that the employed robust cost function ρ can be highly non-        (IRLS) scheme, GNC performs alternating minimization over
+convex, hence making local search techniques sensitive to          the variable x and weights wi to optimize (2), but in the
+the initial guess. The key idea behind GNC is to optimize          meantime also updates the control parameter µ:
+a sequence of easier (i.e., less non-convex) surrogate cost         1) Variable update: Minimize (2) with respect to x with
+functions that gradually converges to the original robust cost         fixed weights wi . This amounts to solving a standard
+                                                                                                                                          6
+
+
+
+                                                                        where ρ : R → R is the truncated least squares (TLS) robust
+                                                                        cost function [15], and Lα,β is the set of inter-robot loop
+                                                                        closures between robot α and β. Each residual measures the
+                                                                        geodesic distance between the to-be-computed average pose
+                                                                        X and the measurement X cA ,
+                                                                                                  Bij
+
+
+                                                                                          rij (X) , X           cA
+                                                                                                                X               ,       (6)
+                                                                                                                  Bij
+Fig. 4: Robust distributed initialization. Left: Three-robot scenario                                                       Σ
+with local reference frames A, B, D, each coinciding with the first     where Σ ∈ S6++ is a fixed covariance matrix. In our implemen-
+pose of the corresponding robot. Between every pair of robots,
+inlier loop closures (−→) lead to similar estimates for the alignment   tation, we use a diagonal covariance with a standard deviation
+between frames (99K). Each outlier loop closure (−→) produces an        of 0.1 rad for rotation and 0.5 m for translation. Between a
+outlier frame alignment (99K), which can be rejected with GNC.          given pair of robots, one robot can solve (5) locally using
+Right: Corresponding robot-level spanning tree.                         GNC [15] without extra communication (since each robot
+     weighted least-squares problem,                                    already has access to all loop closures it is involved in), and
+                                 X                                      transmits the solution to the other robot. In practice, we use
+                    x? ∈ arg min     wi ri2 (x).                 (3)
+                               x∈X                                      the GNC implementation available in GTSAM [87], which
+                                          i
+                                                                        uses Levenberg-Marquardt (initialized at identity pose) in each
+  2) Weight update: Minimize (2) with respect to wi with                GNC variable update to solve (5).
+      fixed variable x. The corresponding update for each wi               Multi-robot coordinate frame estimation. The above pair-
+      has a closed-form expression that depends on the current          wise procedure can be executed repeatedly to express all local
+      robust surrogate function ρµ ; see [15, Proposition 3-4].         reference frames (and trajectory estimates) in a global frame
+  3) Parameter update: Update µ by a constant factor to                 while being robust to outliers. To do so, we first choose an
+      approach µ1 .                                                     arbitrary spanning tree in the robot-level dependency graph
+   The control parameter µ is initialized at a value close to           [17] whose vertices correspond to robots, and edges represent
+µ0 . In the absence of a better guess, all weights are initialized      the presence of at least one inter-robot loop closure between
+to one (i.e., all measurements are considered inliers initially).       the two corresponding robots (Fig. 4). Note that the spanning
+Then the steps above are repeated until µ approaches µ1 .               tree induces a unique path between any two robots. Without
+                                                                        loss of generality, we select an arbitrary robot α and use its
+B. Robust Distributed Initialization
+                                                                        reference frame A as the global frame. For each remaining
+   To optimize the pose graph, we first need to initialize              robot β, we need to obtain its relative transformation to the
+all robot poses in a shared (global) coordinate frame (Algo-            global frame X  cA ∈ SE(3). This is done by traversing the
+                                                                                          B
+rithm 1, line 1). Each robot can readily initialize its trajectory      unique path in the robot-level spanning tree from α to β, and
+in its local reference frame by chaining odometry measure-              composing all estimated pairwise transformations computed
+ments. To express these local initial guesses in the global             using (5) along the way. In practice, this procedure can be
+reference frame, however, we must estimate the relative pose            performed in a fully distributed fashion, by incrementally
+between the local reference frames.                                     growing the robot-level spanning tree from α using local
+   Pairwise coordinate frame estimation. First, let us see              communication. Finally, each robot β uses its corresponding
+how this can be done between two robots α and β, with                   cA to express its initial trajectory in the global frame. Note
+                                                                        X  B
+local reference frames A and B, respectively. Consider a loop           that our distributed PGO approach does not require the robots
+closure between the ith pose of α and jth pose of β, denoted as         to share these initial trajectory estimates, but only requires
+fαi ∈ SE(3). Denote the odometric estimates of pose i and j
+X  βj                                                                   them to be expressed in a shared global frame at each robot.
+(in the local frames of the two robots) as XcA , XcB ∈ SE(3).
+                                              αi     βj
+By combining these pose estimates with the loop closure, we
+                                                                        C. Robust Distributed Pose-Graph Optimization
+obtain a noisy estimate of the relative transformation between
+frames A and B,                                                            Following the initialization stage, robots perform robust
+                   cA , X  cA Xfαi (X cB )−1 ,                          distributed PGO to obtain optimal trajectory estimates while
+                  X  Bij       αi    βj       βj               (4)      simultaneously rejecting outlier loop closures. Let Xαi =
+where the subscript of X   cA indicates that this estimate is           (Rαi , tαi ) ∈ SE(3) denote the ith pose of robot α in the
+                             Bij
+computed using loop closure (i, j). From (4), we see that each          global frame. We aim to optimize all pose variables using all
+inter-robot loop closure provides a candidate alignment for the         odometric measurements and putative loop closures.
+reference frames A and B. Furthermore, candidate alignments                                       α −1
+                                                                                               X nX
+produced by inlier loop closures are expected to be in mutual                       min                     rαi (Xαi , Xαi+1 )2 +
+                                                                                Xαi ∈SE(3),
+agreement; see Fig. 4 and also [11]. To obtain a reliable                        ∀α∈R, ∀i     α∈R i=1
+estimate of the true relative transformation, we thus formulate
+                                                                                              |                  {z                 }
+                                                                                                             odometry
+                                                                                                                                        (7)
+and solve the following robust pose averaging problem,                                            X
+                                  X                                                                         ρ(rβαii (Xαi , Xβj )),
+             cA ∈ arg min
+             X                          ρ(rij (X)),         (5)                               (αi ,βj )∈L
+               B
+                     X∈SE(3)
+                                (i,j)∈Lα,β
+                                                                                              |                 {z                  }
+                                                                                                            loop closures
+                                                                                                                                                7
+
+
+
+where R = {α, β, . . .} denotes the set of robots, nα is the               iterates by reducing the PGO cost function, while DGS re-
+total number of poses of robot α, and the set of loop closures             quires completing rotation estimation before initiating pose
+L includes both intra-robot and inter-robot loop closures. Each            estimation. We refer interested readers to [17] for complete
+residual error in (7) corresponds to a single relative pose                details about RBCD.
+measurement in the global pose graph, where the residual                      In the original (centralized) GNC algorithm, each variable
+error is measured using the chordal distance. For example,                 update step is solved to full convergence using a global solver
+the residual corresponding to a loop closure is given by [83],             or local search technique. In the distributed setup, however,
+                       
+                                                2
+                                                                           solving each instance of (9) to full convergence can be slow,
+   rβαii (Xαi , Xβj ) , wR Rβj − Rαi R    e αi +
+                                            βj
+                                                                           due to the first-order nature of typical distributed optimization
+                                                F                          methods (including both RBCD and DGS). To develop a more
+                                                            (8)
+                                                   2 1/2
+                                                    
+                                                αi                         practical and efficient approach, we relax the convergence
+                         wt tβj − tαi − Rαi tβje         ,                 requirements and allow approximate solutions during variable
+                                                           2
+                                                                           updates. Specifically, we only apply RBCD for a fixed number
+where X   fαi = (R   e αi , teαi ) ∈ SE(3) is the observed noisy           of iterations to refine the trajectory estimates based on the
+            βj         βj βj
+transformation, and wR , wt > 0 specify measurement preci-                 current weights. In our implementation, we set the number
+sions. We employ the standard quadratic cost for odometric                 of iterations to 15 by default. The resulting trajectories are
+measurements as they are outlier-free. For loop closures, we               then used to warm start the next variable update step. As
+choose ρ to be the TLS function as in Section V-B.                         measurement weights converge, our approach also allows the
+   To solve (7), we develop a fully distributed variant of GNC             trajectory estimates to converge to relatively high precision.
+which uses the Riemannian block-coordinate descent (RBCD)                     Weight update. In the original GNC paper [15], it has been
+solver [17] as the workhorse during iterative optimization.                shown that the weight update for each residual function using
+Recall from Section V-A that GNC alternates between variable               TLS only depends on the current residual error rbi , control
+(i.e., trajectory) updates and weight updates. In the following,           parameter µ, and the threshold c̄ of the TLS cost,
+we discuss how each of these two operations are performed
+                                                                                                              if rbi2 ∈ [ µ+1
+                                                                                    
+                                                                                                                                2
+in the distributed setup.                                                           0, p
+                                                                                                                          µ c̄ , +∞],
+                                                                                                                           µ
+   Variable update. In this case, the variable update step                   wi ← rbc̄i µ(µ + 1) − µ, if rbi2 ∈ [ µ+1         c̄2 , µ+1  2
+                                                                                                                                     µ c̄ ],
+                                                                                                                                             (10)
+                                                                                                                             µ
+                                                                                    
+becomes an instance of standard (weighted) PGO,                                       1,                      if rbi2 ∈ [0, µ+1 c̄2 ].
+                                                                                    
+
+                          α −1
+                       X nX                                                See [15, Proposition 4] for more details. The weight update
+            min                       rαi (Xαi , Xαi+1 )2 +                step is particularly suitable for distributed computation, as (10)
+        Xαi ∈SE(3),
+                       α∈R i=1
+         ∀α∈R, ∀i                                                    (9)   suggests that this operation can be performed independently
+                                                                           and in parallel for each residual function (i.e., loop closure).
+                          X
+                                     wβαji · rβαii (Xαi , Xβj )2 .
+                       (αi ,βj )∈L
+                                                                           We leverage this insight to implement a fully distributed
+                                                                           weight update scheme (Algorithm 1, line 5). Specifically, each
+Compared to (7), terms including the robust cost function ρ                robot first updates weights associated with its internal loop
+(corresponding to the loop closures) are replaced by weighted              closures in parallel. Then, for each inter-robot loop closure,
+squared residuals; see also (3). We apply the RBCD solver                  one of the two involved robots computes the updated weight,
+[17] for distributed optimization of (9) (Algorithm 1, line 4).            and subsequently transmits the new weight to the other robot.
+In short, RBCD operates on the rank-restricted relaxation [83]             After the weight update stage, each robot also updates its
+of (9) and subsequently projects the solution to the Special Eu-           local copy of the control parameter µ, so that the sequence
+clidean group. In our implementation, we set the default rank              of surrogate cost functions gradually converges to the original
+relaxation to 5. RBCD is a fully decentralized algorithm, in               TLS function (Algorithm 1, line 6).
+which each robot α ∈ R is responsible for estimating its own
+trajectory Xα , {Xαi , i = 1, . . . , nα }. During execution,
+                                                                                         VI. L OCAL M ESH O PTIMIZATION
+robots alternate to update their trajectories by relying on partial
+information exchange with their teammates. Specifically, at                   This section describes how to perform local correction of
+each iteration in which robot α updates its trajectory, it needs           the 3D mesh in response to a loop closure. Kimera-Semantics
+to communicate once with its neighboring robots (i.e., robots              builds the 3D mesh from the Kimera-VIO (odometric) estimate.
+that share inter-robot loop closures with robot α), where the              However, since distributed PGO described in previous section
+communication can be either direct or relayed by other robots.             improves the accuracy of the trajectory estimate by enforcing
+Furthermore, robot α only needs to receive neighboring robots’             loop closures, it is desirable to correct the mesh according to
+“public poses” (i.e., poses that share inter-robot loop closures           the optimized trajectory estimate (i.e., each time distributed
+with robot α). This property allows RBCD to preserve privacy               PGO is executed). Here we propose an approach for mesh
+and saves communication effort over the remaining poses. The               optimization based on deformation graphs [88]. Deformation
+main advantages of RBCD over the previous DGS method [8]                   graphs are a model from computer graphics that deforms a
+lies in the fact that it has provable convergence guarantees.              given mesh in order to anchor points in this mesh to user-
+Moreover, RBCD can be used as an anytime algorithm, since                  defined locations while ensuring that the mesh remains locally
+each iteration is guaranteed to improve over the previous                  rigid; deformation graphs are typically used for 3D animations,
+                                                                                                                                        8
+
+
+
+                                                                       the vertices in the deformation graph by solving the following
+                                                                       local optimization problem at each robot,
+                                                                                        n
+                                                                                        X
+                                                                           arg min        ||Xi       X̄i ||2Σx +
+                                                                       X1 ,...,Xn ∈SE(3) i=0
+                                                                       M1 ,...,Mm ∈SE(3)
+                                                                                         Xm     X
+                                                                                                         ||RkM (gl − gk ) + tM    M 2
+                                                                                                                             k − tl ||Σ +
+                                                                                        k=0 l∈N M (k)
+       (a) Undeformed mesh.               (b) Deformed mesh                             n
+                                                                                        X       X
+Fig. 5: LMO deformation graph including mesh vertices (violet) and                                   ||Rix geil + txi − tM   2
+                                                                                                                         l ||Σ       (11)
+keyframe vertices (red). Edges connect two mesh vertices that are                        i=0 l∈N M (i)
+adjacent in the mesh (gray links), as well as mesh vertices with the
+keyframe vertices they are observed in (orange links). The green       where gk denotes the non-deformed position of vertex k in the
+poses denote optimized poses from distributed PGO.                     deformation graph, geil denotes the non-deformed position of
+                                                                       vertex l in the coordinate frame of keyframe i, N M (k) denotes
+where one wants to animate a 3D object while ensuring it               all the mesh vertices in the deformation graph connected to
+moves smoothly and without artifacts [88].                             vertex k, and denotes a tangent-space representation of the
+   Creating the deformation graph. In our approach, we                 relative pose between Xi and X̄i [89, 7.1]. Intuitively, the
+create a unified deformation graph including a simplified              first term in the minimization (11) enforces (“anchors”) the
+mesh and a pose graph of trajectory keyframes. The process             poses of each keyframe Xi to match the optimized poses
+is illustrated in Fig. 5. The intuition is that the "anchor            X̄i from distributed PGO. The second term enforces local
+points" in [88] will be the keyframes in our trajectory. More          rigidity of the mesh by minimizing the mismatch with respect
+specifically, while Kimera-Semantics builds a local 3D mesh            to the non-deformed configuration gk . The third term enforces
+for each robot α using pose estimates from Kimera-VIO, we              local rigidity of the relative positions between keyframes and
+keep track of the subset of 3D mesh vertices seen in each              mesh vertices by minimizing the mismatch with respect to the
+keyframe from Kimera-VIO. To build the deformation graph,              non-deformed configuration in the local frame of pose Xi .
+we first subsample the mesh from Kimera-Semantics to obtain a          We optimize (11) using a Levenberg-Marquardt method in
+simplified mesh. We simplify the mesh with an online vertex            GTSAM [87].
+clustering method by storing the vertices of the mesh in an               Since the deformation graph contains a subsampled version
+octree data structure; as the mesh grows, the vertices in the          of the original mesh, after the optimization, we retrieve the
+same voxel of the octree are merged and degenerate faces and           location of the remaining vertices as in [88]. In particular, the
+edges are removed. The voxel size is tuned according to the            positions of the vertices of the complete mesh are obtained as
+environment or the dataset. Then, the vertices of this simplified      affine transformations of nodes in the deformation graph:
+                                                                                           m
+mesh and the corresponding keyframe poses are added as                                    X
+vertices in the deformation graph; we are going to refer to                          v
+                                                                                     ei =     sj (vi )[RjM (vi − gj ) + tM
+                                                                                                                         j ]       (12)
+                                                                                          j=1
+the corresponding vertices in the deformation graph as mesh
+vertices and keyframe vertices. Moreover, we add two types of          where vi indicates the original vertex positions and v
+                                                                                                                            ei are the
+edges to the deformation graph: mesh edges (corresponding to           new deformed positions. The weights sj are defined as
+                                                                                                                         2
+pairs of mesh vertices sharing a face in the simplified mesh),                         sj (vi ) = (1 − ||vi − gj ||/dmax )       (13)
+and keyframe edges (connecting a keyframe with the set of              and then normalized to sum to one. Here dmax is the distance
+mesh vertices it observes).                                            to the k + 1 nearest node as described in [88] (we set k = 4).
+   For each mesh vertex k in the deformation graph, we assign             Note that the Kimera-Semantics mesh also includes semantic
+a transformation Mk = (RkM , tM     k ), where Rk
+                                                   M
+                                                       ∈ SO(3)         labels as an attribute for each node in the mesh, which remain
+       M       3
+and tk ∈ R ; Mk defines a local coordinate frame, where                untouched in the mesh deformation.
+Rk is initialized to the identity and tk is initialized to the
+position gk of the mesh vertex from Kimera-Semantics (i.e.,                                  VII. E XPERIMENTS
+without accounting for loop closures). We also assign a pose              In this section, we perform extensive evaluations of Kimera-
+Xi = (Rkx , txk ) to each keyframe vertex i. The pose is               Multi. Our results show that Kimera-Multi provides robust and ac-
+initialized to the pose estimates from Kimera-VIO.                     curate estimation of trajectories and metric-semantic meshes,
+   Optimizing the deformation graph. The goal is to correct            is efficient in terms of communication usage, and is flexible
+the mesh on each robot in response to changes in the keyframe          thanks to its modularity. The rest of this section is organized as
+poses (due to PGO). Towards this goal, we need to adjust the           follows. In Section VII-A, we analyze the robustness of Kimera-
+poses (and the mesh vertex positions) to “anchor” the keyframe         Multi in numerical experiments. In Section VII-B, we evaluate
+poses to the latest estimates from distributed PGO as shown in         the quality of trajectory estimates and metric-semantic re-
+Fig. 5. Denoting the optimized poses from distributed PGO as           construction in photo-realistic simulations and benchmarking
+X̄i , and calling n the number of keyframes in the trajectory          datasets. Lastly, in Section VII-C, we demonstrate Kimera-Multi
+and m the total number of mesh vertices in the deformation             on two challenging real-world datasets collected by ground
+graph. Following [88], we compute updated poses Xi , Mk of             robots.
+                                                                                                                                                                                                                                      9
+
+
+
+                       L2    PCM   GNC        PCM + GNC                           L2    PCM   GNC        PCM + GNC
+
+          10 1                                                       10 1
+                                                                                                                                10 1                                                    10 1
+
+          10 0                                                       10 0
+                                                                                                                                10 0                                                    10 0
+ATE (m)
+
+
+
+
+                                                           ATE (m)
+
+
+
+
+                                                                                                                      ATE (m)
+
+
+
+
+                                                                                                                                                                              ATE (m)
+          10 -1                                                      10 -1
+                                                                                                                                10 -1                                                   10 -1
+
+
+          10 -2                                                      10 -2                                                      10 -2                                                   10 -2
+
+
+          10 -3                                                      10 -3                                                      10 -3                                                   10 -3
+                  1     20    40   60    80     99   100                     1     20    40   60    80     99   100                     1     20   40   60    80   99   100                     1     20   40   60    80   99   100
+                       Probability threshold (%)                                  Probability threshold (%)                                 Probability threshold (%)                               Probability threshold (%)
+                      (a) Outlier ratio: 10%                                     (b) Outlier ratio: 70%                                 (a) Outlier ratio: 10%                                  (b) Outlier ratio: 70%
+Fig. 6: Single-robot tests. Comparisons between solvers on single-                                                    Fig. 7: Multi-robot tests. Comparisons between solvers on three-
+robot synthetic PGO problems across 10 Monte Carlo runs.                                                              robot synthetic PGO problems across 10 Monte Carlo runs.
+
+
+A. PGO Robustness Analysis                                                                                            outliers (Fig. 6b), PCM has larger errors especially at higher
+   In this section, we evaluate different robust trajectory esti-                                                     probability thresholds (e.g., 99%), indicating that the method is
+mation techniques on synthetic datasets with varying ratios of                                                        unable to reject all outliers. In this case, applying subsequent
+outlier loop closures. Our results demonstrate the importance                                                         GNC helps to improve the performance of PCM. However,
+of robust initialization for multi-robot PGO. Furthermore,                                                            also in this case, applying GNC alone consistently achieves
+we show that alternative technique based on PCM [13] has                                                              the best performance over the entire range of probability
+low recall (i.e., missing correct loop closures). Overall, we                                                         thresholds. This result suggests that GNC should be the
+show that the proposed D-GNC method achieves the best                                                                 method of choice in single-robot PGO independent from the
+performance, and is not sensitive to parameter tuning.                                                                parameter tuning.
+   Single-robot experiments. To offer additional insights and                                                            Multi-robot experiments. In multi-robot PGO, there is
+contrast with the multi-robot analysis later, we first perform                                                        no longer an outlier-free initial guess (i.e., odometry), which
+ablation studies on single-robot synthetic datasets. We simulate                                                      is crucial for the strong performance of GNC observed in
+2D PGO problems contaminated by outliers using the INTEL                                                              the single-robot case. We investigate this issue in the next
+dataset [90]. To generate outlier loop closures, we randomly                                                          experiment, and demonstrate the robust initialization scheme
+select pairs of non-adjacent poses in the original pose graph,                                                        proposed in Section V-B as an effective solution. Similar to
+and add relative measurements with uniformly random rota-                                                             the previous experiment, we use the INTEL dataset with the
+tions and translations. For translations, we sample each coor-                                                        same outlier model described previously. The pose graph is
+dinate uniformly at random within the domain [−10, 10] m.                                                             divided into three segments with approximately equal lengths
+   The following trajectory estimation techniques are com-                                                            to simulate a three-robot collaborative SLAM scenario.
+pared: (1) L2: standard least squares optimization using                                                                 We compare two variants of GNC using different initial
+Levenberg-Marquardt (LM), (2) PCM: outlier rejection with                                                             guesses. The first variant uses the proposed robust initialization
+pairwise consistency maximization [13] using the approximate                                                          scheme, and is labeled as “GNC” in Fig. 7 (green). The
+maximum clique solver [82] followed by LM, (3) GNC:                                                                   second variant uses a naïve initialization formed using the
+graduated non-convexity [15], (4) PCM + GNC: PCM outlier                                                              local odometry of each robot and randomly sampled inter-
+rejection followed by GNC. Both LM and GNC are imple-                                                                 robot loop closures between pairs of robots; see (4). This
+mented in GTSAM [87]. All methods start from the odometry                                                             variant is labeled as “GNC (naïve init)” in Fig. 7 (magenta).
+initial guess. Note that both PCM and GNC require the user                                                            When PCM is used, we sample inter-robot loop closures from
+to specify a confidence level (in the form of a probability                                                           the inlier set returned by PCM. All problems are solved
+threshold) that determines the maximum residual of inliers.                                                           using a centralized implementation based on GTSAM [87].
+We vary this probability threshold and compare different                                                              Distributed experiments will be presented in the next section.
+techniques across the entire spectrum.                                                                                   Fig. 7 reports ATE results across 10 Monte Carlo runs. With
+   Fig. 6 shows the absolute trajectory errors (ATE) with                                                             10% outlier loop closures (Fig. 7a), it is less likely that the
+respect to the maximum likelihood estimate, computed using                                                            naïve initialization is affected by outliers. Consequently, the
+the outlier-free pose graph. Results are collected over 10                                                            two variants of GNC have similar performance in most cases,
+Monte Carlo runs. Standard LM optimization is not robust                                                              but naïve initialization still causes occasional failures (magenta
+even under 10% outlier loop closures (Fig. 6a). In many cases,                                                        outliers). The failure cases correspond to instances when the
+PCM tends to be overly conservative and reject inliers (due                                                           initial guess was accidentally built using an outlier loop clo-
+to approximate maximum clique search), which leads to an                                                              sure. The problem caused by incorrect initialization becomes
+increase in the trajectory error. The same issue also negatively                                                      more evident under 70% outlier loop closures (Fig. 7b), where
+impacts the performance of PCM + GNC (blue), since rejected                                                           naïve initialization fails in the majority of instances. This
+inliers cannot be recovered. On the other hand, GNC (green)                                                           is because under 70% outliers, the naïve initial guess is
+achieves smaller error across the entire spectrum. Under 70%                                                          almost always contaminated by wrong loop closures, which
+                                                                                                                                                                                           10
+
+
+
+        Robot 1        Robot 2   Robot 3   MLE          Robot 1   Robot 2   Robot 3   MLE          Robot 1        Robot 2   Robot 3   MLE         Robot 1        Robot 2   Robot 3   MLE
+
+
+                                                    5
+    0                                                                                          0                                              0
+                                                    0
+
+   -5                                              -5                                         -5                                             -5
+
+                                                  -10
+  -10                                                                                        -10                                            -10
+                                                  -15
+  -15                                             -20                                        -15                                            -15
+
+                                                  -25
+  -20                                                                                        -20                                            -20
+                                                  -30
+        -10       -5       0     5    10   15              -10       0      10        20           -10       -5       0     5    10   15           -10      -5       0     5    10   15
+
+
+        (a) PCM (ATE = 2.24m)                    (b) GNC (naïve init) (ATE = 11.59m)          (c) PCM + GNC (ATE = 0.09m)                         (d) GNC (ATE = 0.003m)
+Fig. 8: Comparing final trajectory estimates of different techniques under 70% outlier loop closures. All methods use the same probability
+threshold of 99%.
+
+
+severely affects the performance of GNC. In comparison,                                        Trajectory estimation results. We first evaluate the accu-
+using PCM helps to avoid catastrophic failures, but PCM still                               racy of different distributed trajectory estimation techniques. In
+exhibits low recall as in the single-robot case. Finally, the                               this experiment, we use Kimera-VIO to process raw sensor data,
+proposed robust initialization effectively corrects the wrong                               and it is thus hard to obtain accurate covariance information
+initial guess, and applying GNC from the robust initialization                              for all measurements. In our implementation, we use a fixed
+(green) consistently outperforms other techniques.                                          isotropic covariance for each residual in PGO, with a standard
+   To provide additional insights over the performance of                                   deviation of 0.01 rad for rotation and 0.1 m for translation.
+different techniques, Fig. 8 shows qualitative comparisons                                  Moreover, we use a relatively conservative probability thresh-
+of final trajectory estimates on a random problem instance                                  old of 50% for all robust estimation techniques. We compare
+with 70% outliers. All techniques use the same probability                                  the following distributed solvers: (1) L2: standard PGO (least
+threshold of 99%. Under this setting, PCM (Fig. 8a) fails                                   squares optimization) using RBCD [17], (2) PCM: outlier re-
+to reject all outlier loop closures. As a result, its solution is                           jection with PCM [13], followed by RBCD, (3) D-GNC (NI):
+distorted when compared to the maximum likelihood estimate.                                 proposed D-GNC method starting from a naïve initial guess
+When applying GNC from naïve initialization (Fig. 8b), the                                  that combines local odometry of each robot with randomly
+method fails to recover any inlier loop closures due to incorrect                           sampled inter-robot loop closures between pairs of robots, (4)
+initialization that causes the variable update to converge to                               PCM + D-GNC: outlier rejection with PCM, followed by D-
+wrong estimates. Fig. 8c-8d show that applying either PCM                                   GNC, (5) D-GNC: the proposed D-GNC method with robust
+or robust initialization to correct the initial guess before ap-                            initialization, (6) D-GNC (ES): an “early stopped” version
+plying GNC can effectively resolve the problem. Between this                                of D-GNC that terminates after 50 total RBCD updates, (7)
+two approaches, however, our proposed robust initialization                                 centralized GNC from GTSAM [87].
+produces lower trajectory error, which can also be seen by                                     Table I reports the final ATE of each method when evaluated
+comparing the trajectory estimates within the red box. This is                              against the ground truth. Note that the total trajectory length
+because PCM incorrectly removes inlier loop closures during                                 varies significantly across datasets, which also causes ATE
+outlier rejection, which causes a loss of accuracy that cannot                              to vary. Due to the existence of outlier loop closures, stan-
+be recovered by GNC.                                                                        dard least squares optimization (L2) gives large errors. PCM
+                                                                                            improves over the L2 results, but still yields large errors on
+B. Evaluation in Simulation and Benchmarking Datasets                                       a subset of datasets. The proposed D-GNC method achieves
+   We evaluate Kimera-Multi in three photo-realistic simulation                             significantly lower trajectory errors on all datasets. Similar to
+environments (Medfield, City, Camp), developed by the Army                                  the synthetic experiments (Section VII-A), we observe that
+Research Laboratory Distributed and Collaborative Intelligent                               applying GNC after PCM (“PCM + D-GNC” in the table)
+Systems and Technology (DCIST) Collaborative Research                                       always leads to suboptimal performance compared to the
+Alliance [91]. In addition, we also evaluate on three real-world                            proposed approach, due to the low recall of PCM. On the
+environments (Vicon Room 1, Vicon Room 2, Machine Hall) from the                            Medfield simulation, applying D-GNC from naïve initialization
+EuRoc dataset [92]. Among all datasets, Machine Hall contains                               fails. In this case, the naïve initialization is wrong due to the
+five sequences which are used to simulate collaborative SLAM                                selection of an outlier loop closure. This creates an error in
+with five robots. The simulation and Vicon Room datasets                                    the initial alignment of robots’ reference frames which D-GNC
+contain three sequences that are used to simulate a three-robot                             is unable to correct. Finally, we observe that on three of the
+scenario. In our experiments in this section and Section VII-C,                             datasets, applying early stopping (ES) leads to lower error
+we run Kimera-Multi in a setting where robots are constantly                                compared to full optimization (distributed or centralized). In
+in communication range, which means that inter-robot loop                                   this experiment, estimation errors are computed with respect
+closures are established at the earliest possible time. In future                           to the ground truth trajectories, which are in general different
+work, we plan to further improve our implementation and test                                from the true (unknown) maximum likelihood estimate. In
+our system in scenarios where communication is intermittent.                                summary, the proposed D-GNC method achieves the best
+                                                                                                                                        11
+
+
+TABLE I: Absolute trajectory errors (ATE) in meters with respect to ground truth trajectories. For each dataset, we also report the total
+trajectory length (including all robots). L2: standard least squares optimization using LM; PCM: pairwise consistency maximization [13];
+D-GNC: proposed distributed trajectory estimation method (using robust initialization); NI: naïve initialization; ES: early stopping. For
+reference, we also report the ATE of centralized GNC (colored in gray).
+
+                       Length [m]     L2      PCM     D-GNC (NI)      PCM + D-GNC       D-GNC       D-GNC (ES)      Centralized GNC
+         Medfield         2396       64.2     12.5        57.4             4.64           3.92         4.32              3.88
+           City           1213       3.58     1.57        0.91             1.08           0.85         0.76              1.00
+          Camp            1037       11.9     1.37        0.97             1.09           0.96         0.75              1.33
+      Vicon Room 1         211       1.17     1.00        0.34             0.45           0.35         0.21              0.36
+      Vicon Room 2         206       1.87     1.56        0.46             0.62           0.47         0.48              0.43
+       Machine Hall        466       1.92     1.76        0.48             0.70           0.41         0.49              0.52
+
+
+
+performance, and applying early stopping (ES) does not sig-
+nificantly affect the accuracy of trajectory estimation, which
+remains comparable to the centralized GNC.
+   Communication usage and solution runtime. In Table II,
+we compare the communication usage of Kimera-Multi with
+two baseline centralized architectures that either transmit all
+images or keypoints. Data payloads used by Kimera-Multi are
+divided into three parts: place recognition (exchanging bag-of-
+word vectors), geometric verification (exchanging keypoints
+and descriptors), and distributed PGO. The front-end (first
+two modules) consumes more communication than the back-
+end (distributed PGO). Overall, our results demonstrate that
+Kimera-Multi is communication-efficient. For instance, on the
+Vicon Room 2 dataset, our system achieves a communication
+reduction of 70% compared to the baseline centralized system
+that transmits all keypoints and descriptors. On the other
+hand, the system does not achieve equally significant com-
+                                                                      Fig. 9: Metric reconstruction evaluation on the Euroc squences. Mesh
+munication reduction on the Machine Hall dataset. Compared            error (in meters) for the 3D meshes by Kimera-Semantics and Kimera-
+to other datasets, the increased number of robots in Machine          Multi’s LMO.
+Hall results in more data transmission. In particular, the loose
+thresholds for loop closure detection lead to increased data
+transmission during the geometric verification (GV) stage. Fur-       cloud to its nearest neighbor in the estimated point cloud to
+ther communication reduction may be achieved by employing             obtain the metric accuracy of the 3D mesh. In addition, we
+recent communication-efficient methods for distributed place          evaluate the semantic reconstruction accuracy by calculating
+recognition [42, 7] and geometric verification [44, 45].              the percentage of correctly labeled points [16] relative to the
+   In addition, Table II reports the runtime of D-GNC and             ground truth using the correspondences given by ICP. Fig. 9
+also compares with the centralized solver (implemented in             and Fig. 10 report the metric accuracy of the individual meshes
+GTSAM [87]). Our method has reasonable runtime (approx-               constructed by each robot as well as the merged global mesh,
+imately 10 seconds) for the smaller Vicon Room datasets. For          and Table III shows the semantic reconstruction accuracy in
+the larger datasets, D-GNC requires more time for full conver-        the simulator (EuRoc does not provide ground-truth semantics).
+gence. Nevertheless, applying early stopping (ES) effectively         In general, the metric-semantic mesh accuracy improves after
+keeps the runtime close to its centralized counterpart, without       LMO for both individual and merged 3D meshes, demon-
+heavily compromising estimation accuracy.                             strating the effectiveness of LMO in conjunction with our
+   Metric-Semantic Mesh Quality. We use the ground-truth              distributed trajectory optimization. The dense metric-semantic
+point clouds available in the EuRoc Vicon Room 1 and 2                meshes are shown in Fig. 11 and Fig. 12. In the case when
+datasets, and the ground-truth mesh (and its semantic labels)         semantic labels are unavailable, we are still able to generate
+available in the DCIST simulator to evaluate the accuracy of          the mesh, colored by the RGB image colors, as shown in
+the 3D metric-semantic mesh built by Kimera-Semantics and the         Fig. 13 for the experiment in the simulator portraying the
+                                                                      Medfield scene.
+impact of the local mesh optimization (LMO). For evaluation,
+the estimated and ground-truth meshes are sampled with a
+uniform density of 103 points/m2 as in [16]. The resulting            C. Evaluation in Large-Scale Outdoor Datasets
+semantically-labeled point clouds are then registered using the         Experimental Setup. We demonstrate Kimera-Multi on two
+ICP [93] implementation in Open3D [94]. Then, we calculate            challenging outdoor datasets, collected using a Clearpath
+the mean distance between each point in the ground-truth point        Jackal UGV equipped with a forward-facing RealSense D435i
+                                                                                                                                                     12
+
+
+TABLE II: Communication usage and solution runtime. The data payloads induced by Kimera-Multi are further divided into three modules:
+place recognition (PR) that exchanges bag-of-word vectors, geometric verification (GV) that transmits keypoints and feature descriptors, and
+distributed pose graph optimization (DPGO). Centralized communication and runtime are colored in gray.
+
+                                                           Communication [MB]                                        Runtime [sec]
+           Dataset     # Poses   # Edges
+                                                                          Centralized   Centralized
+                                           PR     GV     DPGO   Total                                 Distributed   Distributed (ES)   Centralized
+                                                                           (Images)     (Keypoints)
+          Medfield       2918     3104     22.6   41.5    1.8   65.9         2113          141           29.2             5.9              4.4
+            City         3212     4173     16.2   44.5    8.8   69.5         2326          155           22.1             4.5              3.2
+           Camp          5088     5200     39.2   19.7    0.5   59.4         3685          246           43.2             9.1              4.4
+       Vicon Room 1      1693     2788     9.5    14.7    3.6   27.8         1226          81.7          8.9              2.2              3.1
+       Vicon Room 2      1738     2335     11.5   10.2    2.7   24.4         1259          83.9          11.7             3.2              1.7
+        Machine Hall     3261     5196     46.0   76.8   22.9   145.7        2362          157           20.5             2.5              6.3
+
+
+
+
+Fig. 10: Metric reconstruction evaluation on the Camp, City, and
+Medfield simulator datasets. Mesh error (in meters) for the 3D meshes
+by Kimera-Semantics and Kimera-Multi’s LMO.
+
+TABLE III: Semantic reconstruction evaluation. Semantic labels accuracy
+before and after correction by LMO in the DCIST simulator.
+            Dataset Robot ID Kimera-Semantics (%) LMO (%)
+                         0            81.6           96.2
+            Camp         1            92.8           98.1                    Fig. 11: Dense metric-semantic 3D mesh model generated by Kimera-
+                         2            82.8           96.1                    Multi with three robots in the simulated Camp scene.
+                      Merged          79.4           95.2
+                         0            77.1           77.7
+             City        1            80.7           83.1                    (including outliers). Diagonal entries in the table correspond
+                         2            71.4           70.6                    to intra-robot loop closures. Both datasets contain many outlier
+                      Merged          76.1           78.8                    loop closures, which are successfully rejected by D-GNC.
+                                                                             Compared to Medfield, the Stata dataset contains significantly
+RGBD Camera and IMU. The first dataset was collected at the                  less inter-robot loop closures, which makes distributed PGO
+Medfield State Hospital, Massachusetts, USA (Fig. 1). Three                  particularly challenging.
+sets of trajectories were recorded, with the longest trajectory                 In order to evaluate estimation accuracy in the absence of
+being 860 meters in length. The second dataset was collected                 ground truth trajectories, we measure end-to-end errors as in
+around the Ray and Maria Stata Center at MIT (Fig. 14), and                  [95]. In particular, we design each individual robot trajectory
+also includes three different trajectories with each trajectory              to start and finish at the same place, and then compute the
+being over 500 meters in length. In both Fig. 1 and Fig. 14,                 final end-to-end position errors. The end-to-end error is not
+the red, orange, and blue trajectories correspond to robots                  equivalent to the ATE, but still provides useful information
+with ID 0, 1, and 2, respectively. Both sets of experiments                  about the final estimation drift on each trajectory. Table V
+are challenging and include many similar-looking scenes that                 compares the end-to-end errors of Kimera-VIO, Kimera-Multi
+induce spurious loop closures.                                               (using D-GNC to estimate trajectories), and centralized result
+   Results and Discussions. Table IV reports statistics about                (solved using GNC in GTSAM [87]). To complement the
+loop closures on the outdoor datasets. Specifically, for each                quantitative result, we also provide qualitative visualizations
+pair of robots, we report the number of loop closures accepted               of the optimized trajectories and meshes in Fig. 1 and Fig. 14.
+by D-GNC over the total number of detected loop closures                        On the Medfield dataset (Fig. 1), Kimera-VIO accumulates a
+                                                                                                                                                           13
+
+
+                                                                    TABLE IV: Loop closure statistics on outdoor datasets. For each pair of
+                                                                    robots, we show the number of loop closures accepted by D-GNC over the
+                                                                    total number of putative loop closures (including outliers). Diagonal entries
+                                                                    correspond to intra-robot loop closures.
+
+                                                                                 Robot 0 Robot 1 Robot 2                     Robot 0 Robot 1 Robot 2
+                                                                     Robot 0       1/1       11/41    27/53       Robot 0 391/416            1/2      1/1
+                                                                     Robot 1                 79/114 340/707       Robot 1                217/271      0/0
+                                                                     Robot 2                         172/182      Robot 2                            57/76
+                                                                            (a) Medfield experiment                         (b) Stata experiment
+                                                                    TABLE V: Trajectory lengths and end-to-end errors in meters on outdoor
+                                                                    datasets.
+                                                                       Dataset     Robot ID     Length [m]     Kimera-VIO     Kimera-Multi     Centralized
+                                                                                         0           600         18.74           0.01              0.01
+                                                                      Medfield           1           860         14.84           0.13              0.13
+                                                                                         2           728         24.55           0.09              0.09
+                                                                                         0           515         49.02           0.03              0.01
+                                                                        Stata            1           570         24.19           33.13             21.56
+                                                                                         2           610         29.35           1.26              1.17
+
+
+                                                                    mary, our trajectory estimation results together with the final
+                                                                    optimized mesh shown in Fig. 1c demonstrate the effectiveness
+                                                                    of the proposed system.
+                                                                       In comparison, the Stata dataset (Fig. 14) is more chal-
+                                                                    lenging, partially due to the lack of enough inter-robot loop
+Fig. 12: Dense metric-semantic 3D mesh model generated by Kimera-   closures (Table IVb). Kimera-VIO accumulates higher drifts as
+Multi with three robots in the simulated City scene.
+                                                                    shown in Fig. 14a and Table V. Fig. 14b shows the Kimera-Multi
+                                                                    trajectory estimates produced using the default settings of D-
+                                                                    GNC (see Algorithm 1). In this case, the global pose graph has
+                                                                    11184 poses in total. D-GNC uses 120 RBCD iterations which
+                                                                    takes 50 seconds. We observe that while the orange and red
+                                                                    trajectory estimates are qualitatively correct, the blue trajectory
+                                                                    is not correctly aligned in the global frame. This is because
+                                                                    with the approximate variable updates of D-GNC (presented
+                                                                    in Section V-C), the only inter-robot loop closure with the
+                                                                    blue trajectory is rejected. Additionally, with fewer inter-robot
+                                                                    loop closures, RBCD generally converges at a slower rate. To
+                                                                    resolve this issue, we increase the number of RBCD iterations
+                                                                    within each variable update, hence making D-GNC more
+                                                                    similar to the centralized GNC algorithm. With this change,
+                                                                    D-GNC uses a total of 2000 RBCD iterations which takes
+                                                                    14 minutes. However, the final trajectory estimates (Fig. 14c)
+                                                                    are significantly improved and are close to centralized GNC
+                                                                    (Fig. 14d). The corresponding end-to-end errors are also close
+                                                                    to centralized GNC as shown in Table V. Fig. 15 shows the
+Fig. 13: Dense metric 3D mesh model generated by Kimera-Multi
+                                                                    optimized mesh produced by Kimera-Multi corresponding to the
+with three robots in the simulated Medfield scene.
+                                                                    trajectory estimates shown in Fig. 14c. In this experiment, the
+                                                                    difficulty faced by Kimera-Multi is primarily due to the lack of
+                                                                    inter-robot loop closures (Table IVb). In the future, we plan
+drift of approximately 15-25 m on each trajectory sequence.
+                                                                    to further improve the loop closure detection module to gain
+We note that the drift is mostly in the vertical direction, hence
+                                                                    better performance in similar visually challenging scenarios.
+only partially visible in Fig. 1a. Through loop closures and
+robust distributed PGO, Kimera-Multi significantly reduces the
+error and furthermore achieves the same performance as the                                       VIII. C ONCLUSION
+centralized solver as shown in Table V. In this case, the global       We presented Kimera-Multi, a distributed multi-robot system
+pose graph has 15650 poses in total (including all robots).         for robust and dense metric-semantic SLAM. Our system ad-
+D-GNC uses a total of 100 RBCD iterations which takes               vances state-of-the-art multi-robot perception by estimating 3D
+53 seconds. Further runtime reduction may be achieved by            mesh models that capture both dense geometry and semantic
+decreasing the rate at which keyframes are created. In sum-         information of the environment. Kimera-Multi is fully distributed:
+                                                                                                                                        14
+
+
+
+
+                               (a) Kimera-VIO                              (b) Kimera-Multi (D-GNC with approximate variable updates)
+
+
+
+
+             (c) Kimera-Multi (D-GNC with full variable updates)                           (d) Centralized GNC
+Fig. 14: Stata experiment. (a) Trajectory estimate from Kimera-VIO. (b) Trajectory estimate produced by Kimera-Multi, using D-GNC with
+the default approximate variable updates. (c) Trajectory estimate produced by Kimera-Multi, using D-GNC with full variable updates. (d)
+Trajectory estimate produced by centralized GNC.
+
+
+                                                                     stage method for robust distributed pose graph optimization,
+                                                                     which serves as the estimation backbone of Kimera-Multi and
+                                                                     outperforms prior outlier rejection methods.
+                                                                        We performed extensive evaluation of Kimera-Multi, using
+                                                                     a combination of photo-realistic simulations, indoor SLAM
+                                                                     benchmarking datasets, and large-scale outdoor datasets. Our
+                                                                     results demonstrated that Kimera-Multi (i) provides robust and
+                                                                     accurate trajectory estimation while being fully distributed, (ii)
+                                                                     estimates 3D meshes with improved metric-semantic accuracy
+                                                                     compared to inputs from Kimera, and (iii) is communication-
+                                                                     efficient and achieves significant communication reductions
+Fig. 15: Stata experiment. Optimized mesh produced by Kimera-Multi   compared to baseline centralized systems.
+corresponding to trajectory estimate shown in Fig. 14c.
+                                                                                        ACKNOWLEDGMENTS
+                                                                       The authors gratefully acknowledge Dominic Maggio for
+each robot performs independent navigation, using Kimera to          assistance during outdoor data collection.
+estimate local trajectories and meshes in real-time. When
+communication becomes available, robots engage in local                                         R EFERENCES
+communication to detect loop closures and perform distributed         [1] A. Rosinol, A. Violette, M. Abate, N. Hughes, Y. Chang,
+trajectory estimation. From the globally optimized trajectory             J. Shi, A. Gupta, and L. Carlone, “Kimera: from SLAM
+estimates, each robot performs local mesh optimization to                 to spatial perception with 3D dynamic scene graphs,”
+refine its local map. We also presented D-GNC, a novel two-               Intl. J. of Robotics Research, 2021.
+                                                                                                                               15
+
+
+
+ [2] A. J. Davison, “Futuremapping: The computational struc-           1663, 2020.
+     ture of spatial AI systems,” arXiv Preprint: 1803.11288,     [15] H. Yang, P. Antonante, V. Tzoumas, and L. Carlone,
+     2018, (pdf).                                                      “Graduated non-convexity for robust spatial perception:
+ [3] R. F. Salas-Moreno, R. A. Newcombe, H. Strasdat,                  From non-minimal solvers to global outlier rejection,”
+     P. H. J. Kelly, and A. J. Davison, “SLAM++: Simultane-            IEEE Robotics and Automation Letters (RA-L), vol. 5,
+     ous localisation and mapping at the level of objects,” in         no. 2, pp. 1127–1134, 2020.
+     IEEE Conf. on Computer Vision and Pattern Recognition        [16] A. Rosinol, M. Abate, Y. Chang, and L. Carlone,
+     (CVPR), 2013.                                                     “Kimera: an open-source library for real-time metric-
+ [4] J. McCormac, A. Handa, A. J. Davison, and S. Leuteneg-            semantic localization and mapping,” in IEEE Intl. Conf.
+     ger, “SemanticFusion: Dense 3D Semantic Mapping with              on Robotics and Automation (ICRA), 2020.
+     Convolutional Neural Networks,” in IEEE Intl. Conf. on       [17] Y. Tian, K. Khosoussi, D. M. Rosen, and J. P. How,
+     Robotics and Automation (ICRA), 2017.                             “Distributed certifiably correct pose-graph optimization,”
+ [5] M. Grinvald, F. Furrer, T. Novkovic, J. J. Chung, C. Ca-          IEEE Transactions on Robotics, vol. 37, no. 6, pp. 2137–
+     dena, R. Siegwart, and J. Nieto, “Volumetric Instance-            2156, 2021.
+     Aware Semantic Mapping and 3D Object Discovery,”             [18] Y. Chang, Y. Tian, J. How, and L. Carlone, “Kimera-
+     IEEE Robotics and Automation Letters, vol. 4, no. 3,              Multi: a system for distributed multi-robot metric-
+     pp. 3037–3044, 2019.                                              semantic simultaneous localization and mapping,” in
+ [6] A. Cunningham, M. Paluri, and F. Dellaert, “DDF-SAM:              IEEE Intl. Conf. on Robotics and Automation (ICRA),
+     Fully distributed slam using constrained factor graphs,”          2021.
+     in IEEE/RSJ Intl. Conf. on Intelligent Robots and Systems    [19] K. Tateno, F. Tombari, I. Laina, and N. Navab, “CNN-
+     (IROS), 2010.                                                     SLAM: Real-time dense monocular slam with learned
+ [7] T. Cieslewski, S. Choudhary, and D. Scaramuzza, “Data-            depth prediction,” in IEEE Conf. on Computer Vision and
+     efficient decentralized visual SLAM,” IEEE Intl. Conf.            Pattern Recognition (CVPR), 2017.
+     on Robotics and Automation (ICRA), 2018.                     [20] K.-N. Lianos, J. L. Schönberger, M. Pollefeys, and T. Sat-
+ [8] S. Choudhary, L. Carlone, C. Nieto, J. Rogers, H. Chris-          tler, “Vso: Visual semantic odometry,” in European Conf.
+     tensen, and F. Dellaert, “Distributed mapping with pri-           on Computer Vision (ECCV), 2018, pp. 246–263.
+     vacy and communication constraints: Lightweight algo-        [21] J. Dong, X. Fei, and S. Soatto, “Visual-inertial-semantic
+     rithms and object-based models,” Intl. J. of Robotics             scene representation for 3D object detection,” 2017.
+     Research, 2017.                                              [22] J. Behley, M. Garbade, A. Milioto, J. Quenzel, S. Behnke,
+ [9] V. Tchuiev and V. Indelman, “Distributed consistent               C. Stachniss, and J. Gall, “SemanticKITTI: A Dataset for
+     multi-robot semantic localization and mapping,” IEEE              Semantic Scene Understanding of LiDAR Sequences,” in
+     Robotics and Automation Letters, vol. 5, no. 3, pp. 4649–         Intl. Conf. on Computer Vision (ICCV), 2019.
+     4656, 2020.                                                  [23] L. Zheng, C. Zhu, J. Zhang, H. Zhao, H. Huang,
+[10] Y. Yue, C. Zhao, M. Wen, Z. Wu, and D. Wang, “Col-                M. Niessner, and K. Xu, “Active scene under-
+     laborative semantic perception and relative localization          standing via online semantic reconstruction,” arXiv
+     based on map matching,” in 2020 IEEE/RSJ International            preprint:1906.07409, 2019.
+     Conference on Intelligent Robots and Systems (IROS),         [24] K. Tateno, F. Tombari, and N. Navab, “Real-time and
+     2020, pp. 6188–6193.                                              scalable incremental segmentation on dense slam,” in
+[11] V. Indelman, E. Nelson, N. Michael, and F. Dellaert,              IEEE/RSJ Intl. Conf. on Intelligent Robots and Systems
+     “Multi-robot pose graph localization and data associa-            (IROS), 2015, pp. 4465–4472.
+     tion from unknown initial relative poses via expectation     [25] C. Li, H. Xiao, K. Tateno, F. Tombari, N. Navab, and
+     maximization,” in IEEE Intl. Conf. on Robotics and                G. D. Hager, “Incremental scene understanding on dense
+     Automation (ICRA), 2014.                                          SLAM,” in IEEE/RSJ Intl. Conf. on Intelligent Robots
+[12] J. Dong, E. Nelson, V. Indelman, N. Michael, and F. Del-          and Systems (IROS), 2016, pp. 574–581.
+     laert, “Distributed real-time cooperative localization and   [26] J. McCormac, R. Clark, M. Bloesch, A. J. Davison,
+     mapping using an uncertainty-aware expectation maxi-              and S. Leutenegger, “Fusion++: Volumetric object-level
+     mization approach,” in IEEE Intl. Conf. on Robotics and           SLAM,” in Intl. Conf. on 3D Vision (3DV), 2018, pp.
+     Automation (ICRA), Seattle, WA, May 2015, pp. 5807–               32–41.
+     5814.                                                        [27] M. Runz, M. Buffier, and L. Agapito, “Maskfusion: Real-
+[13] J. G. Mangelson, D. Dominic, R. M. Eustice, and R. Va-            time recognition, tracking and reconstruction of multiple
+     sudevan, “Pairwise consistent measurement set maxi-               moving objects,” in IEEE International Symposium on
+     mization for robust multi-robot map merging,” in IEEE             Mixed and Augmented Reality (ISMAR). IEEE, 2018,
+     Intl. Conf. on Robotics and Automation (ICRA), 2018,              pp. 10–20.
+     pp. 2916–2923.                                               [28] M. Rünz and L. Agapito, “Co-fusion: Real-time segmen-
+[14] P. Lajoie, B. Ramtoula, Y. Chang, L. Carlone, and                 tation, tracking and fusion of multiple objects,” in IEEE
+     G. Beltrame, “DOOR-SLAM: distributed, online, and                 Intl. Conf. on Robotics and Automation (ICRA). IEEE,
+     outlier resilient slam for robotic teams,” IEEE Robotics          2017, pp. 4471–4478.
+     and Automation Letters (RA-L), vol. 5, no. 2, pp. 1656–      [29] B. Xu, W. Li, D. Tzoumanikas, M. Bloesch, A. Davison,
+                                                                                                                               16
+
+
+
+     and S. Leutenegger, “MID-Fusion: Octree-based object-        [44] Y. Tian, K. Khosoussi, M. Giamou, J. P. How, and
+     level multi-instance dynamic slam,” 2019, pp. 5231–               J. Kelly, “Near-optimal budgeted data exchange for dis-
+     5237.                                                             tributed loop closure detection,” in Robotics: Science and
+[30] A. Rosinol, A. Gupta, M. Abate, J. Shi, and L. Carlone,           Systems (RSS), 2018.
+     “3D Dynamic Scene Graphs: Actionable Spatial Percep-         [45] Y. Tian, K. Khosoussi, and J. P. How, “A resource-aware
+     tion with Places, Objects, and Humans,” in Robotics:              approach to collaborative loop-closure detection with
+     Science and Systems (RSS), 2020.                                  provable performance guarantees,” The International
+[31] A. Rosinol, T. Sattler, M. Pollefeys, and L. Carlone,             Journal of Robotics Research, 2020. [Online]. Available:
+     “Incremental visual-inertial 3d mesh generation with              https://doi.org/10.1177/0278364920948594
+     structural regularities,” in IEEE Intl. Conf. on Robotics    [46] L. Andersson and J. Nygards, “C-SAM : Multi-robot
+     and Automation (ICRA), 2019.                                      SLAM using square root information smoothing,” in
+[32] M. J. Schuster, K. Schmid, C. Brand, and                          IEEE Intl. Conf. on Robotics and Automation (ICRA),
+     M. Beetz, “Distributed stereo vision-based 6d                     2008.
+     localization and mapping for multi-robot teams,”             [47] B. Kim, M. Kaess, L. Fletcher, J. Leonard, A. Bachrach,
+     Journal of Field Robotics, vol. 36, no. 2,                        N. Roy, and S. Teller, “Multiple relative pose graphs
+     pp. 305–332, 2019. [Online]. Available: https:                    for robust cooperative mapping,” in IEEE Intl. Conf. on
+     //onlinelibrary.wiley.com/doi/abs/10.1002/rob.21812               Robotics and Automation (ICRA), Anchorage, Alaska,
+[33] A. Cunningham, V. Indelman, and F. Dellaert, “DDF-                May 2010, pp. 3185–3192.
+     SAM 2.0: Consistent distributed smoothing and map-           [48] T. Bailey, M. Bryson, H. Mu, J. Vial, L. McCalman,
+     ping,” in IEEE Intl. Conf. on Robotics and Automation             and H. Durrant-Whyte, “Decentralised cooperative lo-
+     (ICRA), Karlsruhe, Germany, May 2013.                             calisation for heterogeneous teams of mobile robots,” in
+[34] G. S. Saeedi, M. Trentini, M. L. Seto, and H. Li,                 IEEE Intl. Conf. on Robotics and Automation (ICRA),
+     “Multiple-robot simultaneous localization and mapping:            Shanghai, China, May 2011, pp. 2859–2865.
+     A review,” J. of Field Robotics, vol. 33, pp. 3–46, 2016.    [49] M. Lazaro, L. Paz, P. Pinies, J. Castellanos, and
+[35] P. Schmuck and M. Chli, “CCM-SLAM: Robust and ef-                 G. Grisetti, “Multi-robot SLAM using condensed mea-
+     ficient centralized collaborative monocular simultaneous          surements,” in IEEE Intl. Conf. on Robotics and Automa-
+     localization and mapping for robotic teams,” in Journal           tion (ICRA), 2011, pp. 1069–1076.
+     of Field Robotics (JFR), 2018.                               [50] J. Knuth and P. Barooah, “Collaborative localization with
+[36] J. Sivic and A. Zisserman, “Video google: a text re-              heterogeneous inter-robot measurements by Riemannian
+     trieval approach to object matching in videos,” in Intl.          optimization,” in IEEE Intl. Conf. on Robotics and Au-
+     Conf. on Computer Vision (ICCV), 2003.                            tomation (ICRA), 2013, pp. 1534–1539.
+[37] D. Gálvez-López and J. D. Tardós, “Bags of binary words      [51] R. Tron and R. Vidal, “Distributed 3-D localization of
+     for fast place recognition in image sequences,” IEEE              camera sensor networks from 2-D image measurements,”
+     Transactions on Robotics, vol. 28, no. 5, pp. 1188–1197,          IEEE Transactions on Automatic Control, vol. 59, no. 12,
+     October 2012.                                                     pp. 3325–3340, Dec 2014.
+[38] R. Arandjelovic, P. Gronat, A. Torii, T. Pajdla, and         [52] E. Cristofalo, E. Montijano, and M. Schwager, “Geod:
+     J. Sivic, “NetVLAD: CNN architecture for weakly su-               Consensus-based geodesic distributed pose graph opti-
+     pervised place recognition,” in IEEE Conf. on Computer            mization,” arXiv preprint arXiv:2010.00156, 2020.
+     Vision and Pattern Recognition (CVPR), 2016, pp. 5297–       [53] R. Aragues, L. Carlone, G. Calafiore, and C. Sagues,
+     5307.                                                             “Multi-agent localization from noisy relative pose mea-
+[39] D. Lowe, “Object recognition from local scale-invariant           surements,” in IEEE Intl. Conf. on Robotics and Automa-
+     features,” in Intl. Conf. on Computer Vision (ICCV),              tion (ICRA), 2011, pp. 364–369.
+     1999, pp. 1150–1157.                                         [54] T. Fan and T. Murphey, “Majorization minimization
+[40] H. Bay, T. Tuytelaars, and L. V. Gool, “Surf: speeded up          methods to distributed pose graph optimization with con-
+     robust features,” in European Conf. on Computer Vision            vergence guarantees,” arXiv preprint arXiv:2003.05353,
+     (ECCV), 2006.                                                     2020.
+[41] T. Cieslewski and D. Scaramuzza, “Efficient decentral-       [55] Y. Tian, A. Koppel, A. S. Bedi, and J. P. How, “Asyn-
+     ized visual place recognition using a distributed inverted        chronous and parallel distributed pose graph optimiza-
+     index,” IEEE Robotics and Automation Letters, vol. 2,             tion,” IEEE Robotics and Automation Letters, vol. 5,
+     no. 2, pp. 640–647, 2017.                                         no. 4, pp. 5819–5826, 2020.
+[42] ——, “Efficient decentralized visual place recognition        [56] M. Fischler and R. Bolles, “Random sample consensus:
+     from full-image descriptors,” in 2017 International Sym-          a paradigm for model fitting with application to image
+     posium on Multi-Robot and Multi-Agent Systems (MRS),              analysis and automated cartography,” Commun. ACM,
+     2017, pp. 78–82.                                                  vol. 24, pp. 381–395, 1981.
+[43] M. Giamou, K. Khosoussi, and J. P. How, “Talk resource-      [57] J. Neira and J. Tardós, “Data association in stochastic
+     efficiently to me: Optimal communication planning for             mapping using the joint compatibility test,” IEEE Trans.
+     distributed loop closure detection,” in IEEE Intl. Conf.          Robot. Automat., vol. 17, no. 6, pp. 890–897, 2001.
+     on Robotics and Automation (ICRA), 2018, pp. 1–9.            [58] M. Bosse, G. Agamennoni, and I. Gilitschenski, “Robust
+                                                                                                                                    17
+
+
+
+     estimation and applications in robotics,” Foundations and           2021, arXiv preprint arXiv: 2007.15109, (pdf).
+     Trends in Robotics, vol. 4, no. 4, pp. 225–269, 2016.          [75] A. Agha, K. Otsu, B. Morrell, D. D. Fan, R. Thakker,
+[59] R. Hartley, J. Trumpf, Y. Dai, and H. Li, “Rotation                 A. Santamaria-Navarro, S.-K. Kim, A. Bouman, X. Lei,
+     averaging,” IJCV, vol. 103, no. 3, pp. 267–305, 2013.               J. Edlund, M. F. Ginting, K. Ebadi, M. Anderson,
+[60] N. Sünderhauf and P. Protzel, “Switchable constraints for           T. Pailevanian, E. Terry, M. Wolf, A. Tagliabue, T. S.
+     robust pose graph SLAM,” in IEEE/RSJ Intl. Conf. on                 Vaquero, M. Palieri, S. Tepsuporn, Y. Chang, A. Kalan-
+     Intelligent Robots and Systems (IROS), 2012.                        tari, F. Chavez, B. Lopez, N. Funabiki, G. Miles,
+[61] P. Agarwal, G. D. Tipaldi, L. Spinello, C. Stachniss, and           T. Touma, A. Buscicchio, J. Tordesillas, N. Alatur,
+     W. Burgard, “Robust map optimization using dynamic                  J. Nash, W. Walsh, S. Jung, H. Lee, C. Kanellakis,
+     covariance scaling,” in IEEE Intl. Conf. on Robotics and            J. Mayo, S. Harper, M. Kaufmann, A. Dixit, G. Cor-
+     Automation (ICRA), 2013.                                            rea, C. Lee, J. Gao, G. Merewether, J. Maldonado-
+[62] R. Hartley, K. Aftab, and J. Trumpf, “L1 rotation av-               Contreras, G. Salhotra, M. S. D. Silva, B. Ramtoula,
+     eraging using the Weiszfeld algorithm,” in IEEE Conf.               Y. Kubo, S. Fakoorian, A. Hatteland, T. Kim, T. Bartlett,
+     on Computer Vision and Pattern Recognition (CVPR).                  A. Stephens, L. Kim, C. Bergh, E. Heiden, T. Lew,
+     IEEE, 2011, pp. 3041–3048.                                          A. Cauligi, T. Heywood, A. Kramer, H. A. Leopold,
+[63] J. Casafranca, L. Paz, and P. Piniés, “A back-end `1 norm           C. Choi, S. Daftry, O. Toupet, I. Wee, A. Thakur,
+     based solution for factor graph SLAM,” in IEEE/RSJ Intl.            M. Feras, G. Beltrame, G. Nikolakopoulos, D. Shim,
+     Conf. on Intelligent Robots and Systems (IROS), 2013,               L. Carlone, and J. Burdick, “Nebula: Quest for robotic
+     pp. 17–23.                                                          autonomy in challenging environments; team costar at
+[64] A. Chatterjee and V. M. Govindu, “Efficient and robust              the darpa subterranean challenge,” 2021.
+     large-scale rotation averaging,” in Intl. Conf. on Com-        [76] A. Garcia-Garcia, S. Orts-Escolano, S. Oprea, V. Villena-
+     puter Vision (ICCV), 2013, pp. 521–528.                             Martinez, and J. García-Rodríguez, “A review on deep
+[65] ——, “Robust relative rotation averaging,” IEEE Trans-               learning techniques applied to semantic segmentation,”
+     actions on Pattern Analysis and Machine Intelligence,               ArXiv Preprint: 1704.06857, 2017.
+     vol. 40, no. 4, pp. 958–972, 2018.                             [77] M. Quigley, K. Conley, B. Gerkey, J. Faust, T. Foote,
+[66] G. Hu, K. Khosoussi, and S. Huang, “Towards a reliable              J. Leibs, R. Wheeler, and A. Y. Ng, “Ros: an open-
+     slam back-end,” in 2013 IEEE/RSJ International Confer-              source robot operating system,” in ICRA workshop on
+     ence on Intelligent Robots and Systems, 2013, pp. 37–43.            open source software, vol. 3, no. 3.2. Kobe, Japan,
+[67] E. Olson and P. Agarwal, “Inference on networks of                  2009, p. 5.
+     mixtures for robust robot mapping,” in Robotics: Science       [78] G. Bradski, “The OpenCV Library,” Dr. Dobb’s Journal
+     and Systems (RSS), July 2012.                                       of Software Tools, 2000.
+[68] M. Pfingsthorn and A. Birk, “Simultaneous localization         [79] D. Nistér, “An efficient solution to the five-point rela-
+     and mapping with multimodal probability distributions,”             tive pose problem,” IEEE Trans. Pattern Anal. Machine
+     Intl. J. of Robotics Research, vol. 32, no. 2, pp. 143–171,         Intell., vol. 26, no. 6, pp. 756–770, 2004.
+     2013.                                                          [80] K. Arun, T. Huang, and S. Blostein, “Least-squares
+[69] ——, “Generalized graph SLAM: Solving local and                      fitting of two 3-D point sets,” IEEE Trans. Pattern Anal.
+     global ambiguities through multimodal and hyperedge                 Machine Intell., vol. 9, no. 5, pp. 698–700, sept. 1987.
+     constraints,” Intl. J. of Robotics Research, vol. 35, no. 6,   [81] L. Kneip and P. Furgale, “Opengv: A unified and gener-
+     pp. 601–630, 2016.                                                  alized approach to real-time calibrated geometric vision,”
+[70] P. Lajoie, S. Hu, G. Beltrame, and L. Carlone, “Modeling            in 2014 IEEE International Conference on Robotics and
+     perceptual aliasing in SLAM via discrete-continuous                 Automation (ICRA), 2014, pp. 1–8.
+     graphical models,” IEEE Robotics and Automation Let-           [82] R. A. Rossi, D. F. Gleich, and A. H. Gebremedhin,
+     ters (RA-L), 2019.                                                  “Parallel maximum clique algorithms with applications
+[71] L. Carlone and G. Calafiore, “Convex relaxations for                to network analysis,” SIAM Journal on Scientific Com-
+     pose graph optimization with outliers,” IEEE Robotics               puting, vol. 37, no. 5, pp. C589–C616, 2015.
+     and Automation Letters (RA-L), vol. 3, no. 2, pp. 1160–        [83] D. Rosen, L. Carlone, A. Bandeira, and J. Leonard, “SE-
+     1167, 2018, arxiv preprint: 1801.02112, (pdf).                      Sync: a certifiably correct algorithm for synchronization
+[72] L. Carlone, A. Censi, and F. Dellaert, “Selecting good              over the Special Euclidean group,” Intl. J. of Robotics
+     measurements via `1 relaxation: a convex approach for               Research, 2018, arxiv preprint: 1611.00128, (pdf).
+     robust estimation over graphs,” in IEEE/RSJ Intl. Conf.        [84] M. J. Black and A. Rangarajan, “On the unification of
+     on Intelligent Robots and Systems (IROS), 2014, (pdf).              line processes, outlier rejection, and robust statistics with
+[73] M. Graham, J. How, and D. Gustafson, “Robust incre-                 applications in early vision,” Intl. J. of Computer Vision,
+     mental SLAM with consistency-checking,” in IEEE/RSJ                 vol. 19, no. 1, pp. 57–91, 1996.
+     Intl. Conf. on Intelligent Robots and Systems (IROS), Sept     [85] P. Huber, Robust Statistics. John Wiley & Sons, New
+     2015, pp. 117–124.                                                  York, NY, 1981.
+[74] P. Antonante, V. Tzoumas, H. Yang, and L. Carlone,             [86] Z. Zhang, “Parameter estimation techniques: a tutorial
+     “Outlier-robust estimation: Hardness, minimally tuned               with application to conic fitting,” Image and Vision
+     algorithms, and applications,” IEEE Trans. Robotics,                Computing, vol. 15, no. 1, pp. 56 – 76, 1997.
+                                                                                                                                                            18
+
+
+
+[87] F. Dellaert et al., “Georgia Tech Smoothing And Mapping                                              Carlos Nieto-Granda is a Postdoctoral-Fellow in
+     (GTSAM),” https://gtsam.org/, 2019.                                                                  the Computational and Information Sciences Di-
+                                                                                                          rectorate at the U.S. Army Research Laboratory
+[88] R. W. Sumner, J. Schmid, and M. Pauly, “Embedded                                                     (DEVCOM/ARL). He has obtained a B.S. degree
+     deformation for shape manipulation,” ACM SIGGRAPH                                                    in Electronics Systems from Tecnológico de Mon-
+     2007 papers on - SIGGRAPH ’07, 2007.                                                                 terrey, Campus Estado de Mexico, Mexico; an M.S.
+                                                                                                          degree in Computer Science from Georgia Institute
+[89] T. Barfoot, State Estimation for Robotics. Cambridge                                                 of Technology; and a Ph.D. degree in Intelligent
+     University Press, 2017.                                                                              Systems, Robotics, and Control from University of
+[90] L. Carlone and A. Censi, “From angular manifolds to                                                  California San Diego. His research interests include
+                                                                                                          autonomous exploration, coordination, and decision-
+     the integer lattice: Guaranteed orientation estimation with                making for heterogeneous multi-robot teams focused on state estimation, sen-
+     application to pose graph optimization,” IEEE Trans.                       sor fusion, computer vision, localization and mapping, autonomous navigation,
+     Robotics, vol. 30, no. 2, pp. 475–492, 2014.                               and control in complex environments.
+[91] Army Research Laboratory, “Distributed and Collabora-
+     tive Intelligent Systems and Technology Collaborative
+     Research Alliance (DCIST CRA),” https://www.dcist.
+     org/, 2020.
+[92] M. Burri, J. Nikolic, P. Gohl, T. Schneider, J. Rehder,
+     S. Omari, M. Achtelik, and R. Siegwart, “The EuRoC                                                  Jonathan P. How (Fellow, IEEE) received the
+     micro aerial vehicle datasets,” Intl. J. of Robotics Re-                                            B.A.Sc. degree from the University of Toronto
+     search, 2016.                                                                                       (1987), and the S.M. and Ph.D. degrees in aeronau-
+                                                                                                         tics and astronautics from MIT (1990 and 1993).
+[93] P. J. Besl and N. D. McKay, “A method for registration of                                           Prior to joining MIT in 2000, he was an Assistant
+     3-D shapes,” IEEE Trans. Pattern Anal. Machine Intell.,                                             Professor at Stanford University. He is currently the
+     vol. 14, no. 2, 1992.                                                                               Richard C. Maclaurin Professor of aeronautics and
+                                                                                                         astronautics at MIT. Some of his awards include
+[94] Q.-Y. Zhou, J. Park, and V. Koltun, “Open3D: A modern                                               the IEEE CSS Distinguished Member Award (2020),
+     library for 3D data processing,” arXiv:1801.09847, 2018.                                            AIAA Intelligent Systems Award (2020), IROS Best
+[95] C. Forster, L. Carlone, F. Dellaert, and D. Scaramuzza,                                             Paper Award on Cognitive Robotics (2019), and the
+                                                                                AIAA Best Paper in Conference Awards (2011, 2012, 2013). He was the
+     “On-manifold preintegration for real-time visual-inertial                  Editor-in-chief of IEEE Control Systems Magazine (2015–2019), is a Fellow
+     odometry,” IEEE Trans. Robotics, vol. 33, no. 1, pp. 1–                    of AIAA, and was elected to the National Academy of Engineering in 2021.
+     21, 2017.
+                        Yulun Tian received the B.A. degree in computer
+                        science from UC Berkeley, Berkeley, CA, USA,
+                        in 2017, and the S.M. degree in aeronautics and
+                        astronautics in 2019 from the Massachusetts Institute
+                        of Technology, Cambridge, MA, USA, where he
+                        is currently working toward the Ph.D. degree in                                   Luca Carlone is the Leonardo Career Development
+                        aeronautics and astronautics. His work received a                                 Associate Professor in the Department of Aeronau-
+                        2020 Honorable Mention from the IEEE Robotics                                     tics and Astronautics at the Massachusetts Institute
+                        and Automation Letters.                                                           of Technology, and a Principal Investigator in the
+                           His current research interest includes distributed                             Laboratory for Information & Decision Systems
+                        optimization and estimation with applications to                                  (LIDS). He has obtained a B.S. degree in mecha-
+localization and mapping in multi-agent systems.                                                          tronics from the Polytechnic University of Turin,
+                                                                                                          Italy, in 2006; an S.M. degree in mechatronics from
+                      Yun Chang is a PhD student in the Department                                        the Polytechnic University of Turin, Italy, in 2008;
+                      of Aeronautics and Astronautics and the Laboratory                                  an S.M. degree in automation engineering from the
+                      for Information & Decision Systems (LIDS). He is                                    Polytechnic University of Milan, Italy, in 2008; and
+                      currently a member of SPARK lab, led by Profes-           a Ph.D. degree in robotics also the Polytechnic University of Turin in 2012.
+                      sor Luca Carlone. He has obtained a B.S. degree           He joined LIDS as a postdoctoral associate (2015) and later as a Research
+                      in Aerospace Engineering from the Massachusetts           Scientist (2016), after spending two years as a postdoctoral fellow at the
+                      Institute of Technology in 2019 and a M.S. in Aero-       Georgia Institute of Technology (2013-2015). His research interests include
+                      nautics and Astronautics from the Massachusetts           nonlinear estimation, numerical and distributed optimization, and probabilistic
+                      Institute of Technology in 2021. His research inter-      inference, applied to sensing, perception, and decision-making in single and
+                      est includes robust localization and mapping with         multi-robot systems. His work includes seminal results on certifiably correct
+                      applications to multirobot systems. He is a recipient     algorithms for localization and mapping, as well as approaches for visual-
+of the MIT AeroAstro Andrew G. Morsa Memorial Award (2019) and the              inertial navigation and distributed mapping. He is a recipient of the Best
+Henry Webb Salisbury Award (2019).                                              Student Paper Award at IROS 2021, the Best Paper Award in Robot Vision
+                                                                                at ICRA 2020, a 2020 Honorable Mention from the IEEE Robotics and
+                         Fernando Herrera Arias is a software engineer at       Automation Letters, a Track Best Paper award at the 2021 IEEE Aerospace
+                         Cruise. He graduated from the Massachusetts Insti-     Conference, the 2017 Transactions on Robotics King-Sun Fu Memorial Best
+                         tute of Technology with a S.B. degree in Computer      Paper Award, the Best Paper Award at WAFR 2016, the Best Student Paper
+                         Science and Engineering in 2020 and a M.Eng.           Award at the 2018 Symposium on VLSI Circuits, and he was best paper finalist
+                         in Electrical Engineering and Computer Science in      at RSS 2015 and RSS 2021. He is also a recipient of the NSF CAREER Award
+                         2021. He is a former member of SPARK lab, led          (2021), the RSS Early Career Award (2020), the Google Daydream (2019)
+                         by Professor Luca Carlone. As part of this team,       and the Amazon Research Award (2020), and the MIT AeroAstro Vickie
+                         his work included the evaluation of neural networks    Kerrebrock Faculty Award (2020).
+                         for loop-closure detection in SLAM systems. His
+                         current work is on vehicle dynamics for self-driving
+                         cars.
+

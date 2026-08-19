@@ -1,0 +1,718 @@
+                                                                                                                                                                                                                                                                          1
+
+
+
+
+                                          Swarm-SLAM: Sparse Decentralized Collaborative
+                                         Simultaneous Localization and Mapping Framework
+                                                      for Multi-Robot Systems
+                                                                                         Pierre-Yves Lajoie, Giovanni Beltrame
+
+
+
+                                            Abstract—Collaborative Simultaneous Localization And Map-
+                                         ping (C-SLAM) is a vital component for successful multi-
+arXiv:2301.06230v3 [cs.RO] 12 Jan 2024
+
+
+
+
+                                         robot operations in environments without an external positioning               LiDAR               Inter-Robot
+
+
+
+
+                                                                                                                                                                                                 Communication Interface
+                                         system, such as indoors, underground or underwater. In this                                  Loop Closure   Detection
+                                                                                                                                                Inter-Robot
+                                                                                                                            LiDAR
+                                                                                                                        Stereo
+
+
+
+
+                                                                                                                                                                                                                           Communication Interface
+                                         paper, we introduce Swarm-SLAM, an open-source C-SLAM                                           Loop Closure     Detection
+                                                                                                                       Camera  LiDAR
+                                                                                                                           Stereo        GlobalSparse    Inter-Robot
+                                                                                                                                                  Matching
+
+
+
+
+                                                                                                                                                                                                                                                     Communication Interface
+                                                                                                                        RGBD                 Loop Closure Detection          Neighbor
+                                         system that is designed to be scalable, flexible, decentralized,                  Camera
+                                                                                                                               Stereo        Global Matching
+                                                                                                                                          Local Matching                   Management
+                                                                                                                       Camera
+                                                                                                                            RGBD                                                Neighbor
+                                         and sparse, which are all key properties in swarm robotics.                           Camera             Global  Matching
+                                                                                                                           Camera
+                                                                                                                         IMU   RGBD           Local Matching                  Management
+                                                                                                                                                                                    Neighbor
+                                         Our system supports lidar, stereo, and RGB-D sensing, and it                        IMU
+                                                                                                                               Camera             Local Matching                  Management
+                                                                                                                                           Intra-Robot                Multi-Robot Pose
+                                         includes a novel inter-robot loop closure prioritization technique                     IMU Loop Closure Detection           Graph  Optimization
+                                                                                                                        Odometry                Intra-Robot              Multi-Robot  Pose
+                                         that reduces communication and accelerates convergence. We                                      Loop Closure    Detection      Graph  Optimization
+                                                                                                                           Odometry                 Intra-Robot              Multi-Robot Pose
+                                         evaluated our ROS 2 implementation on five different datasets,                External              Loop Closure Detection Back-End
+                                                                                                                                           Front-End                        Graph Optimization
+                                                                                                                              Odometry
+                                         and in a real-world experiment with three robots communicating                   External              Front-End                  Back-End
+                                         through an ad-hoc network. Our code is publicly available:                          External              Front-End                  Back-End
+                                         https://github.com/MISTLab/Swarm-SLAM
+                                           Index Terms—SLAM, Multi-Robot Systems, Collaborative Per-                                    Fig. 1: Swarm-SLAM Overview
+                                         ception, Swarm Intelligence
+
+                                                                 I. I NTRODUCTION                                   suffer from a communication bottleneck between the robots
+                                                                                                                    and the server, which limits their scalability. Besides, due
+                                               OLLABORATIVE perception is an important problem
+                                         C     for the future of robotics. The shared understanding
+                                         of the environment it provides is a prerequisite to many
+                                                                                                                    to networking coverage challenges in large indoor or sub-
+                                                                                                                    terranean environments, robots cannot realistically maintain
+                                                                                                                    a stable connection to a central server. Thus, decentralized
+                                         applications from autonomous warehouse management to sub-
+                                                                                                                    solution relying only on occasional communication between
+                                         terranean exploration. One of the most powerful tools for
+                                                                                                                    the robots are better suited for large-scale deployment. While
+                                         robotic perception is Simultaneous Localization And Mapping
+                                                                                                                    collaborative perception within small teams of autonomous
+                                         (SLAM) which tightly couples the geometric perception of
+                                                                                                                    robots is currently challenging, we believe it useful to look
+                                         the environment with state estimation [1]. In addition to
+                                                                                                                    forward to very large teams, or swarms of robots and start tack-
+                                         producing high-quality maps of the robot surroundings, it
+                                                                                                                    ling the problems specific to this scale of deployment. Prior
+                                         provides localization estimates that are essential for planning
+                                                                                                                    works on swarm robotics have identified a few key properties
+                                         and control. However, single-robot SLAM estimates are local
+                                                                                                                    required for swarm compatibility [3] such as: communication
+                                         in the individual robot reference frame. Therefore, when
+                                                                                                                    and sensing must be local to the robot neighborhood, and
+                                         multiple robots operate in GPS-denied environments, they
+                                                                                                                    robots should not rely on a centralized authority or global
+                                         do not share situational awareness unless they manage to
+                                                                                                                    knowledge. In the specific case of C-SLAM [4], we consider
+                                         connect, or merge, their local maps. To solve this problem,
+                                                                                                                    the following four properties described in Sections III and IV:
+                                         Collaborative SLAM (C-SLAM) searches for inter-robot map
+                                                                                                                    scalability, flexibility, decentralization, and sparsity.
+                                         links and uses them to combine the local maps into a shared
+                                                                                                                       In this paper, we propose novel techniques assembled in
+                                         global understanding of the environment. One of the main
+                                                                                                                    a complete resource-efficient C-SLAM framework compliant
+                                         practical challenges in C-SLAM is resource management [2],
+                                                                                                                    with these key swarm compatibility properties. Our approach
+                                         in particular considering the severe communication and com-
+                                                                                                                    is fully decentralized, supports different types of sensors
+                                         putation limitations of mobile robots. Those limitations need
+                                                                                                                    (stereo cameras, RGB-D cameras, and lidars), and requires
+                                         to be addressed to achieve real-time performance, especially
+                                                                                                                    significantly less communication than previous techniques.
+                                         when a large number of robots work together. While effective
+                                                                                                                    To reduce data exchanges, we introduce a novel budgeted
+                                         in some scenarios, centralized C-SLAM solutions, which rely
+                                                                                                                    approach to select candidate inter-robot loop closures based
+                                         on a single server for data association and optimization,
+                                                                                                                    on algebraic connectivity maximization, inspired from recent
+                                           This work was partially supported by a Vanier Canada Graduate Scholar-   work on pose graph sparsification [5]. This preprocessing
+                                         ships Award and by the Canadian Space Agency.                              of place recognition matches allows us to achieve accurate
+                                           Department of Computer and Software Engineering,
+                                         Polytechnique Montréal, Montreal, Canada,                                 C-SLAM estimates faster and using fewer communication
+                                         {pierre-yves.lajoie, giovanni.beltrame}@polymtl.ca                         resources. Moreover, we leverage advances in robotic software
+2
+
+
+
+engineering, to make our framework compatible with ad-hoc
+networks. In summary, we offer the following contributions:         TABLE I: Open-Source C-SLAM Frameworks supporting
+                                                                    stereo cameras (s), lidars (l) and/or RGB-D cameras (d).
+  • A sparse budgeted inter-robot loop closure detection
+     algorithm under communication constraints based on                              Sensor   Decentralized   Robust   Sporadic   Sparse
+     algebraic connectivity maximization;                           DSLAM [6]          s           ✓
+  • A decentralized approach to neighbor management and             DOOR-SLAM [7] s,l              ✓            ✓         ✓
+     pose graph optimization suited for sporadic inter-robot        Kimera-Multi [16] s            ✓            ✓         ✓
+                                                                    Disco-SLAM [17] l              ✓            ✓         ✓
+     communication;                                                 LAMP 2.0 [18]      l                        ✓                   ✓
+  • A swarm-compatible open-source framework which sup-             maplab 2.0 [19]  s,d,l                      ✓
+     ports lidars, as well as stereo or RGB-D cameras;              Swarm-SLAM       s,d,l         ✓            ✓         ✓         ✓
+
+We extensively evaluate of the overall system performance on
+datasets and in a real-world experiment.
+                                                                    al. [10] propose the distributed Gauss-Seidel (DGS) technique
+                                                                    which allows robots to converge to a globally consistent local
+          II. BACKGROUND AND R ELATED W ORK
+                                                                    pose graph by communicating only the pose estimates involved
+A. Collaborative SLAM                                               in inter-robot loop closures, and therefore preserving the
+   C-SLAM systems can usually be divided into two cate-             privacy of their whole trajectories. Tian et al. [11] significantly
+gories: centralized and decentralized. Centralized systems rely     improve on that approach and provide a certifiably correct
+on a remote base station to aggregate map data and compute          distributed solver for pose graph optimization. This technique
+the global SLAM estimates for all the robots. However, in           performs multiple exchanges between the robots until they
+those systems, the robots need a reliable permanent connection      converge to globally consistent local solutions. In a different
+with the base station, and the scalability is severely limited by   vein, recent work by Murai et al. [12] laid the foundation
+the communication bottleneck to the central server. Such strin-     for larger-scale multi-robot collaborative localization based
+gent networking constraints are often unrealistic, especially in    on Gaussian Belief Propagation. One of the main challenges
+large environments. Decentralized approaches, relying only on       in both single-robot and collaborative SLAM is the frequent
+occasional communication links between robots and without           occurrence of erroneous measurements among inter-robot loop
+any need for a central authority, are preferred in those scenar-    closures due to perceptual aliasing [13]. While many tech-
+ios. However, decentralized systems are limited by the onboard      niques exist for the single-robot problem, Lajoie et al. [7]
+computation and communication capabilities of the robots,           first combined DGS with Pairwise Consistency Maximization
+and they require more sophisticated data management and             (PCM) [14], which computes the maximal clique of pair-
+bookkeeping strategies to obtain accurate SLAM estimates [2].       wise consistent inter-robot measurements, to perform robust
+Similar to single robot SLAM systems, C-SLAM contains two           and distributed optimization. More recently, Yang et al. [15]
+parts commonly named front-end and back-end, see Fig. 1.            introduced the Graduated Non-Convexity (GNC) algorithm,
+The front-end is in charge of feature extraction and data           a general approach for robust estimation on various prob-
+association, while the back-end performs state estimation [1].      lems including pose graph optimization. GNC was integrated
+   1) Front-End: The most challenging step in the C-SLAM            with [11] in a robust distributed solver (D-GNC) [16].
+front-end is the detection and computation of inter-robot              3) Open-Source C-SLAM Systems: Many open-source C-
+loop closures in a resource-efficient manner. Inter-robot loop      SLAM systems have been proposed in the recent years.
+closures correspond to common features or places previously         Cieslewski et al. [6] introduce DSLAM, which uses CNN-
+visited by two or more robots. Those shared features between        based global descriptors for distributed place recognition,
+the robots maps act as stitching points to merge the local maps     and DGS for estimation. DOOR-SLAM [7] robustified the
+together and obtain a shared (global) reference frame.              approach by integrating PCM for outlier rejection and adapted
+   Since the communication cost of sharing entire maps is           it for sporadic inter-robot communication. DiSCo-SLAM [17]
+usually prohibitive, inter-robot loop closure detection can be      extends those ideas to lidar-based C-SLAM using ScanContext
+performed in two stages [6], [7]. In the first stage, compact       global descriptors [9]. Kimera-Multi [16] integrates D-GNC
+global descriptors of images [8] or lidar scans [9], are shared     and incorporates semantic data in the resulting maps. In an
+between the robots for place recognition. Similarity scores are     other line of work, centralized C-SLAM system have also
+computed between the global descriptors from both robots            evolved considerably. The lidar-based system LAMP 2.0 [18]
+to recognize places, or overlaps, between their respective          introduces a centralized Graph Neural Network-based prior-
+maps. The recognized places then correspond to loop closure         itization mechanism to predict the outcome of pose graph
+candidates for the second stage. In the second stage, for           optimization for each inter-robot loop closure candidates. The
+each candidate with high global descriptors similarity, the         multi-modal maplab 2.0 [19] supports heterogeneous groups of
+corresponding costly local descriptors such as 3D keypoints         robots with different sensor setups. In contrast, Swarm-SLAM
+or scans are transmitted to compute the geometric registration      combines the latest advances from previous frameworks and
+between the two robots images or scans.                             introduce a new sparse inter-robot loop closure prioritization to
+   2) Back-End: The role of the C-SLAM back-end is to               further reduce communication. Additionally, unlike previous
+estimate the most likely poses and map from the noisy               techniques, Swarm-SLAM leverages ROS 2 [20] and intro-
+measurements gathered by all robots. To this end, Choudary et       duces a neighbor management system to seamlessly integrate
+                                                                                                                                     3
+
+
+
+C-SLAM with ad-hoc networking. Table I offers a comparison
+of the various systems based on key desirable properties. We
+refer the reader to [2] for a thorough survey on C-SLAM.
+
+B. Graph Sparsification for C-SLAM
+   The ever-growing map and pose graph during long-term
+operations is an important memory and computation efficiency
+challenge in both single-robot and multi-robot SLAM. One
+favored solution is graph sparsification, which aims to ap-                                             Robot 0
+                                                                                                        Robot 1
+
+proximate the complete graph with as few edges as possible,                                             Robot 2
+                                                                                                        Spectral matches
+mainly by removing redundant edges that are not providing                                               Greedy matches
+
+
+new information during the estimation process. To this end,               (a) 2 robots KITTI-00        (b) 3 robots S3E Laboratory
+Doherty et al. [5] formulate the graph sparsification of sin-
+gle robot pose graphs as a maximum algebraic connectivity            Fig. 2: Visualization of 10 first loop closure candidates se-
+augmentation problem, and solve it efficiently using a more          lected by the Spectral and Greedy Approaches. The Spectral
+tractable convex relaxation. In this paper, instead of sparsifying   approach selects candidates in different regions of the pose
+the pose graph after all the measurements have already been          graph to increase the accuracy, while the Greedy approach
+computed, we aim to preemptively sparsify the inter-robot loop       selects redundant candidates in high similarity regions.
+closure candidates generated by the place recognition module.
+This way, we can prioritize the geometric verification of inter-
+                                                                     to identify candidate place recognition matches (i.e., loop
+robot loop closures that will approximate the full pose graph,
+                                                                     closures) between the robots, then local descriptors are used
+thus avoiding wasting resources on redundant measurements.
+                                                                     for 3D registration.
+Importantly, unlike other work maximizing the determinant of
+the information matrix [21], we leverage the results from [5]        Property 2. Flexible. The framework supports multiple sen-
+and focus on the algebraic connectivity of the pose graph            sors (i.e., stereo cameras, RGB-D cameras, lidars) and is
+which has been shown to be a key measure of estimation accu-         decoupled from the odometry source.
+racy [22] (i.e., higher algebraic connectivity is associated with
+lower estimation error). Solving a similar problem, Denniston           In our decentralized (see Property 3) back-end, the re-
+et al. [23] prioritize loop closure candidates based on point        sulting intra-robot and inter-robot loop closure measurements
+cloud characteristics, the proximity of known beacons, and           are combined with the odometry measurements into a pose
+the information gain predicted with a graph neural network.          graph. Local pose graphs are transmitted to the robot selected,
+Interestingly, Tian et al. [24] explore spectral sparsification in   through neighbor management negotiation, to perform the
+the C-SLAM back-end to reduce the required communication             optimization and the resulting estimates are sent back to the
+during distributed pose graph optimization.                          respective robots.
+                                                                     Property 3. Decentralized. All computation is performed
+                   III. S YSTEM OVERVIEW                             onboard the robots without any central authority and they rely
+   As described in Fig. 1, Swarm-SLAM is composed of                 only on peer-to-peer communication.
+three modules. First, to enable decentralization, the neighbor          Current pose estimates, resulting from the whole process,
+management module continuously tracks which robots are               are made available periodically in the form of ROS 2 messages
+in communication range (i.e., neighbors that can be reached          for a minimally invasive integration into existing robotic sys-
+reliably) and what data has been exchanged. Robots publish           tems. To avoid needless bandwidth use, the neighbor manager
+heartbeat messages at a fixed rate such that network con-            keeps track of which measurements have been exchanged.
+nectivity can be evaluated periodically. To make the system          Mapping data for planning or visualization can also be queried
+scalable (see Property 1), the other modules query the neighbor      at the cost of additional computation and communication. For
+management process to determine which robots, if any, are            debugging purposes, we provide a minimal visualization tool
+available, and orchestrate the operations.                           which opportunistically collects mapping data from robots in
+Property 1. Scalable. The number of robots using the frame-          communication range. Overall, we divided place recognition,
+work is not predetermined and it does not require connectivity       geometric verification and pose graph optimization into modu-
+maintenance during the whole mission. Communication and              lar and decoupled processes with clear data interfaces to enable
+computation budgets are set to fit the available bandwidth and       researchers to leverage Swarm-SLAM to easily test new ideas
+computation power onboard the individual robots.                     in each subsystems.
+
+   The front-end takes as input odometry estimates (obtained
+                                                                                            IV. F RONT-E ND
+using an arbitrary technique) along with synchronized sensor
+data (see Property 2). Upon reception, the front-end extracts           Similar to many comparable inter-robot loop closure de-
+global (e.g. compact learned representation) and local de-           tection techniques (e.g. [6], [7], [16]), we adopt a two stage
+scriptors (e.g. 3D keypoints). Global descriptors allow us           approach in which global matching generate candidate place
+4
+
+
+
+recognition matches that are verified using local features in        Property 4. Sparse. The framework prioritizes communica-
+the latter stage, i.e. local matching.                               tion using algebraic connectivity maximization sparsification
+                                                                     to acheive better localization accuracy with fewer data ex-
+                                                                     changes. At every stage, it requires less communication than
+A. Global Matching
+                                                                     comparable techniques.
+  For each keyframe, compact descriptors, that can be com-
+                                                                       As shown in [22], the algebraic connectivity of the pose
+pared with a similarity score, are extracted from sensor
+                                                                     graph controls the worst-case error of the solutions of
+data and broadcast to neighboring robots. When two robots
+                                                                     the SLAM Maximum Likelihood Estimation problem. The
+meet, we perform bookkeeping to determine which global
+                                                                     pose graph algebraic connectivity corresponds to the second-
+descriptors are already known by the other robot and which
+                                                                     smallest eigenvalue λ2 of the rotation weighted Laplacian with
+ones need to be transmitted. We use ScanContext [9] as
+                                                                     entries for pairs of vertices (i, j) defined as:
+global descriptors of lidar scans and the recent CNN-based
+CosPlace [8] for images. We use nearest neighbors based on
+                                                                                        P
+                                                                                         (i,j ′ )∈δ(i) κij ′ , i = j,
+                                                                                        
+cosine similarity for descriptor matching. Once matches are                      Lij = −κij ,                   {i, j} ∈ E,     (5)
+computed, Swarm-SLAM offers two candidate prioritization                                
+                                                                                           0,                   {i, j} ∈
+                                                                                                                       / E.
+                                                                                        
+mechanisms: a greedy prioritization algorithm, used in prior
+work [6], [7], [16], [17], and a novel spectral approach. To         where κij denotes the edge weight and δ(i) is the set of edges
+perfom the candidate prioritization, we define the multi-robot       incident to vertex i. Instead of using a noise model for the
+pose graph as:                                                       edge weights as in [5], we use the similarity score se ∈ [0, 1]
+                                                                     from global matching as confidence metric. Thus, we define
+                        G = (V, E local , E global )          (1)                                global
+                                                                     κij = 1 ∀ e ∈ (E local , Efixed                           global
+                                                                                                        ), and κij = se ∀ e ∈ Ecandidate .
+                       V = (V1 , . . . , Vn )                 (2)    This approach forgoes the need to communicate additional in-
+                   E local
+                           = (E1local , . . . , Enlocal )     (3)    formation regarding the edges’ estimated noise level. However,
+                                global      global                   it is important to note that it loses the theoretical guarantees
+                  E global = (Efixed    , Ecandidate  )       (4)    from [5], yet we show in Section VI that this heuristic
+where V are the vertices from every n robots pose graphs,            approach works well in realistic cases.
+each vertex corresponding to a keyframe; E local are the local          For our purposes, we leverage the property that the Lapla-
+pose graphs edges such as odometry measurements and intra-           cian L can be expressed as the sum of subgraph Laplacians
+robot loop closures; and E global are the global pose graph edges    corresponding to each of its edges to define the augmented
+corresponding to inter-robot loop closures. E global is further      pose graph Laplacian as follows:
+                    global
+divided between Efixed     which contains the fixed measurements                            local         global  X
+                                                                                L(ω) ≜ LE + LEfixed +                  ωe Le         (6)
+that have already been computed, and the candidate inter-robot                                                   global
+                global                                                                                        e∈Ecandidate
+loop closures Ecandidate on which the prioritization is performed.
+Detailed measurements (i.e., pose estimates) are not required        where ωe ∈ {0, 1} is the binary variable which determines
+for our proposed candidate prioritization mechanism. There-          the prioritization of candidate edge e. Therefore, according to
+fore, fixed measurements, both local and global, are undirected      our previously stated goal, we aim to select the subset E ⋆ ⊆
+                                                                       global
+unweighted edges between two vertices, and candidates edges          Ecandidate of fixed budgeted size |E ⋆ | = B which maximizes
+contain an additional weight value corresponding to their re-        the algebraic connectivity λ2 (L(ω)):
+spective similarity score. This reduced multi-robot pose graph       Problem 1. Candidate prioritization via Algebraic Connec-
+can be built directly from the global matching information and       tivity Maximization
+does not require any additional inter-robot communication.
+   The number of edges B to select at each time step is set                                    max λ2 (L(ω))
+                                                                                             ωe ∈{0,1}
+                                                                                                                                      (7)
+by the user. This budget should reflect the communication and
+                                                                                                  |ω| = B.
+computation capacities of the robots. The common candidate
+prioritization approach widely used prior works is a basic
+greedy prioritization in which the top B candidates with the            Problem 1 is NP-Hard [25] due to the integrality constraint
+highest similarity scores are selected.                              on ωe . Therefore, we relax the integrality constraints and,
+   In our proposed spectral prioritization process, we frame         when necessary, we round the optimization result to the nearest
+pose graph sparsification as a candidate prioritization problem,     solution in the feasible set of Problem 1. We solve the relaxed
+and leverage recent work on spectral sparsification. We ob-          problem using the simple and computationally inexpensive
+serve that the two problems are mathematically equivalent, one       approach developed in [5]. It is important to note that this
+being solved before loop closure computation and the other           approach requires the pose graph to be connected, so we
+after. Specifically, we perform sparsification on the candidate      first perform greedy prioritization up until at least one inter-
+inter-robot matches before computing the corresponding 3D            robot loop closure exists between the local pose graphs. We
+measurements, reducing resource usage for the costly inter-          also use the greedy solution as initial guess for the algebraic
+robot geometric verification of redundant candidates, and            connectivity maximization.
+achieving better accuracy (see Property 4).                             In Fig. 2, we present a visualization of our spectral approach
+                                                                     results in comparison to the ones obtained with the standard
+                                                                                                                                   5
+
+
+
+greedy approach. We can see that the candidates selected using    pose graph optimization, the anchor usually corresponds to a
+our spectral technique are more evenly distributed along the      prior which assigns a fixed value to the first pose of the graph.
+pose graph while the greedy candidates are mostly concen-         This anchor then becomes the reference frame of the resulting
+trated in high-similarity areas. Our selected candidates are      estimate. In the beginning, all robots are within their own local
+therefore less redundant for the estimation process.              reference frames where the origin corresponds to their first
+                                                                  pose (i.e., initial position and orientation). Then, when some
+B. Local Matching                                                 robots meet for the first time (e.g. robots 0, 4 and 5), we choose
+                                                                  the first pose of the robot with the lowest ID (e.g. robot 0) as
+   Once the inter-robot loop closure candidates are selected,     the anchor. Therefore, as a result of the estimation process, the
+the next step is to perform local matching (i.e., geometric       involved robots estimates share the same reference frame (e.g.
+verification). This step leverages larger collections of local    robot 0’s first pose). In subsequent rendezvous (e.g. robots 2,
+features, keypoints or point clouds depending on the sensor,      3 and 4), the anchor is selected based on the reference frame
+to compute the 3D relative pose measurement between the           with the lowest ID (e.g. robot 4’s first pose is selected as the
+candidate’s two vertices. To avoid computing the same loop        anchor since its reference frame is robot 0’s). After a few
+closure twice and to reduce the communication burden of           rendezvous, the robots converge to a single global reference
+geometric verification, we follow [26] and formulate the ver-     frame without requiring rendezvous including all robots (e.g.
+tices local features sharing problem as a vertex cover problem.   after the second rendezvous, robots 2 and 3 are also within
+When two or more inter-robot loop closure candidates share        robot 0’s reference frame). This means that Swarm-SLAM can
+a vertex in common, only the common vertex needs to be            scale to large groups of robots, through iterative estimation
+transmitted to effectively compute all the associated relative    among smaller groups of robots.
+pose measurements. Thus, by computing the minimal vertex
+cover, optimally for bipartite graphs and approximately with
+                                                                                  VI. E XPERIMENTAL R ESULTS
+3 robots or more, we obtain an exchange policy which avoids
+redundant communication.                                             To evaluate the effectiveness of our proposed solutions for
+                                                                  the ongoing challenges in Collaborative Simultaneous Local-
+                                                                  ization and Mapping, we conducted extensive experiments on
+C. Inter-Robot Communication                                      several public datasets, as well as in a real-world deployment.
+   It is worth noting, that both for the spectral matching and    Our experiments involved three robots exploring and mapping
+the vertex exchange policy, a temporary broker needs to be dy-    an indoor environment and communicating via ad-hoc net-
+namically elected among the robots in communication range.        working. We specifically evaluated our key contributions to
+The broker then computes the matches and sends requests for       inter-robot loop closure detection and decentralized C-SLAM
+the vertices to be transferred. In our current implementation,    estimation. Additionally, we present detailed statistics of the
+the broker is simply the robot in range with the lowest ID        communication and computation load during our real-world
+according to our neighbor management system, but it could be      experiment, providing insight into the system’s performance
+elected with a different decentralized mechanism (e.g. based      and resource requirements.
+on the available computation resources onboard each robot).
+                                                                  A. Dataset Experiments
+                       V. BACK -E ND                                 We tested Swarm-SLAM on seven sequences from five
+   The role of the back-end is to gather the odometry, intra-     different datasets. To demonstrate the flexibility of our frame-
+and inter-robot loop closure measurements from the front-         work, we used IMUs, stereo cameras, lidars, or a com-
+end in a pose graph, and then estimate the most likely map        bination as inputs. First, we tested on the widely known
+and poses based on those noisy measurements. As men-              autonomous driving KITTI 00 stereo sequence [27] which
+tioned above, unlike other recent systems [7], [21] based on      we split into two parts to simulate a two-robots exploration.
+distributed pose graph optimization, we opt for a simpler         Second, we split the very large (∼10km) KITTI360 09 lidar
+decentralized approach. Similar to the front-end, a robot is      sequence [28] into 5 parts that contain a large number of
+dynamically elected to perform the computation among the          loop closures, making it particularly well suited for inter-robot
+robots in communication range. The other robots share their       loop closure detection analysis. Third, we experimented on
+current pose graph estimates with the elected robot and receive   the first three overlapping lidar sequences of the very recent
+the updated estimates once the computation is completed.          GrAco dataset [29] acquired with custom ground robots on a
+Importantly, any robot can be temporarily elected through         college campus. Fourth, we evaluate our system on the three
+negotiation to perform the pose graph optimization during a       lidar Gate sequences of the M2DGR dataset [30]. Fifth, we
+rendezvous between robots. Swarm-SLAM performs the pose           tested on three sequences of the recent C-SLAM-focused S3E
+graph optimization using the Graduated Non-Convexity [15]         dataset [31]. To avoid tracking failures and obtain more robust
+solver, with the robust Truncated Least Square loss.              results on S3E sequences, we combined lidar-IMU odometry
+   To ensure convergence to a single global localization es-      and stereo camera-based inter-robot loop closure detection,
+timate after multiple sporadic rendezvous without enforcing       highlighting the versatility of Swarm-SLAM. Overall, we
+a central authority, we introduce an anchor selection process     chose the sequences with the most trajectory overlaps to obtain
+to keep track of the current global reference frame. During       more loop closures, and with available GPS ground truth
+6
+
+
+
+                                      ×10−5                                                                                                                                                                                                                                                                                      ×10−5
+                                                                                                                                   ×10−6                                                                                            ×10−6
+                             1.0                                                                                               6                                                                                                4                                                                                           6
+
+                                                                                                                               5                                                                                                                                                                                            5
+                             0.8
+
+
+
+
+                                                                                                                                                                                                                                                                                                   Algebraic connectivity
+    Algebraic connectivity
+
+
+
+
+                                                                                                                                                                                                                                3
+
+
+
+
+                                                                                                      Algebraic connectivity
+
+
+
+
+                                                                                                                                                                                                       Algebraic connectivity
+                                                                                                                               4                                                                                                                                                                                            4
+                             0.6
+                                                                                                                               3                                                                                                2                                                                                           3
+                             0.4
+                                                                                                                               2                                                                                                                                                                                            2
+                                                                                                                                                                                                                                1
+                             0.2                                                   Spectral                                                                                                                                                                                                                                 1                                                Spectral
+                                                                                                                               1                                                Spectral                                                                                      Spectral
+                                                                                   Greedy                                                                                       Greedy                                                                                        Greedy                                                                                         Greedy
+                             0.0                                                                                               0                                                                                                0                                                                                           0
+                                   0          20          40        60        80              100                                  0          20           40        60        80          100                                      0       20           40        60        80          100                                    0           20          40        60        80              100
+                                                   Loop closures computed (%)                                                                       Loop closures computed (%)                                                                    Loop closures computed (%)                                                                     Loop closures computed (%)
+
+                                                                                                                               300
+                                                                               Spectral                                                                                             Spectral                                    120                                               Spectral                                  80                                                   Spectral
+                             20                                                Greedy                                                                                               Greedy                                                                                        Greedy                                                                                         Greedy
+                                                                                                                               250
+                                                                                                                                                                                                                                100
+                                                                                                                                                                                                                                                                                                                            60
+                             15                                                                                                200                                                                                              80
+    ATE (m)
+
+
+
+
+                                                                                                                                                                                                                                                                                                   ATE (m)
+                                                                                                    ATE (m)
+
+
+
+
+                                                                                                                                                                                                     ATE (m)
+                                                                                                                               150                                                                                              60                                                                                          40
+                             10
+                                                                                                                               100                                                                                              40
+                              5                                                                                                                                                                                                                                                                                             20
+                                                                                                                               50                                                                                               20
+
+                              0                                                                                                    0                                                                                                0                                                                                       0
+                                  0           20          40        60        80          100                                          0       20           40        60        80             100                                      0    20           40        60        80             100                                 0          20          40        60        80              100
+                                                   Loop closures computed (%)                                                                        Loop closures computed (%)                                                                    Loop closures computed (%)                                                                    Loop closures computed (%)
+
+
+                                                   (a) KITTI 00                                                                              (b) KITTI-360 09                                                                               (c) GrAco Ground                                                                                (d) S3E Square
+Fig. 3: Comparison between Greedy and Spectral prioritization of candidate inter-robot loop closures. For each datasets, we
+show that the spectral approach outperforms the greedy one in terms of algebraic connectivity (higher is better), and the
+Absolute Translation Error (ATE) (lower is better). We can see that the spectral prioritization converges to the best estimate
+with less inter-robot loop closures.
+
+
+                                                                TABLE II: C-SLAM Estimates Evaluation on Public Datasets with Different Back-Ends.
+
+                                                                                                                                           Communication (kB)                                                                                        Time (s)                                                                                       ATE (m)
+                                                                # Robots                             GNC                                      DGS+PCM                    D-GNC                                                      GNC           DGS+PCM                 D-GNC                                                  GNC              DGS+PCM                D-GNC
+                             KITTI 00                                 2                        280.00                                              30045.50            13499.49                                            20.11                          230.85            70.903                                                   2.17                   9.08              3.77
+                             KITTI-360 09                             5                        484.91                                               3241.21             4485.13                                           196.93                          102.51             70.82                                                   4.02                   6.67              7.15
+                             GrAco Ground                             3                        105.82                                              44686.69            78162.42                                             8.06                          120.25            143.79                                                   6.19                  33.73              8.47
+                             M2DGR Gate                               3                         51.29                                                242.02              721.39                                             1.42                            5.02              7.85                                                   0.70                   1.35              3.07
+                             S3E Square                               3                         80.97                                               1261.12              620.19                                             6.05                           50.31             26.98                                                   4.20                   9.74             20.21
+                             S3E College                              3                        150.37                                               3420.23             3012.28                                            11.96                          125.42             35.62                                                   3.57                  25.32              4.13
+
+
+
+(except for S3E Laboratory). For simplicity and robustness, we                                                                                                                                                     of candidate (x-axis). We perform prioritization successively
+used off-the-shelf software [32] to compute and provide the                                                                                                                                                        up until all the possible matches are selected (i.e., 100% of
+required odometry input to Swarm-SLAM. To better evaluate                                                                                                                                                          loop closures computed). We expect that a better prioritization
+the inter-robot loop closure detection, we consider the worst-                                                                                                                                                     will acheive reasonable accuracy early on, with only a fraction
+case scenario in which the robots are within communication                                                                                                                                                         of the matches selected. The ATE is computed against the
+range only at the end of their trajectories, such that they have                                                                                                                                                   final pose graph estimate containing all possible inter-robot
+to find loop closures between their whole maps at once. This                                                                                                                                                       loop closures, and thus constitutes the best estimate we can
+scenario, analog to multiple robots exploring different parts of                                                                                                                                                   achieve. On the first row, we can see that, as intended, our
+an environment and meeting back at the end, is among the                                                                                                                                                           spectral prioritization is correctly maximizing the algebraic
+most challenging in terms of communication and computation                                                                                                                                                         connectivity of the pose graph. On the second row, as expected,
+load, and therefore benefits the most from our novel spectral                                                                                                                                                      we can see that our spectral prioritization decreases the error
+candidate prioritization mechanism. We refer the reader to                                                                                                                                                         faster than the greedy prioritization. Overall, our experiments
+our open-source implementation for all the parameters and                                                                                                                                                          show that carefully selecting candidates early on requires the
+configuration details of the experiments.                                                                                                                                                                          computation of fewer inter-robot loop closures to significantly
+   1) Inter-Robot Loop Closure Detection Evaluation:                                                                                                                                                               reduce the estimation error (ATE).
+In Fig. 3, we compare the greedy and spectral inter-robot                                                                                                                                                             2) Decentralized C-SLAM Evaluation: In Table II, we
+loop closure candidate prioritization techniques with respect to                                                                                                                                                   present the estimates computed in the back-end on all the
+algebraic connectivity, and Absolute Translation Error (ATE).                                                                                                                                                      sequences for which GPS latitude and longitude data is avail-
+Each approach is used to prioritize the computation of loop                                                                                                                                                        able as ground truth. We report the computation time on a
+closures from the same set of candidates with a budget B of 1,                                                                                                                                                     AMD Ryzen 7 CPU and the total communication required in
+i.e. selecting one loop closure at a time. We plot each metric                                                                                                                                                     kB. Using our same front-end, we compared our GNC-based
+against the percentage of loop closures computed within the set                                                                                                                                                    decentralized back-end against two state-of-the-art distributed
+                                                                                                                                                                     7
+
+
+600                                         600
+                                    Robot 0                                          Robot 1
+
+
+                                                                                                       TABLE III: Real-World Experiment Statistics
+                                    Robot 2                                          Robot 2
+500                                         500
+                                    Anchor                                           Robot 3
+                                                                                     Anchor
+400                                        400
+
+
+300                                        300
+
+
+200                                        200
+                                                                                               # Robots                        3   Length (m)                   475.42
+100                                        100                                                 # Keyframes                  3103   Total comm. (MB)              94.95
+ 0                                           0                                                 # Inter-robot loop cl.         67   # Outliers                       10
+      −200   0   200   400   600     800          −200   0   200         400   600   800
+
+                                                                                               Optimization time (s) 5.52 ± 7.11   Sparsification time (s) 2.71 ± 2.39
+       (a) 0 and 2 rendezvous                     (b) 1, 2 and 3 rendezvous
+600                                         600
+
+
+500
+                                    Robot 3
+                                    Robot 4
+                                    Anchor
+                                            500
+                                                                                     GPS
+                                                                                     Robot 0
+                                                                                     Robot 1
+                                                                                               scheme ensures that by choosing the current first pose estimate
+400                                        400
+                                                                                     Robot 2
+                                                                                     Robot 3
+                                                                                     Robot 4
+                                                                                               from the robot with the lowest reference frame ID (i.e., first
+300                                        300                                       Anchor
+                                                                                               poses of (a) robot 0, (b) robot 2, (c) robot 3), we can propagate
+                                                                                               the global reference frame among the team of robots. In
+200                                        200
+
+
+100                                        100
+
+
+ 0                                           0                                                 other words, we are able to converge to a single global ref-
+                                                                                               erence frame through successive estimations between subsets
+      −200   0   200   400   600     800          −200   0   200         400   600   800
+
+
+
+       (c) 3 and 4 rendezvous                     (d) All robots rendezvous                    of robots, without enforcing connectivity maintenance or a
+Fig. 4: Reference frame convergence via occasional ren-                                        central authority. This decentralized approach improves the
+dezvous. From (a) to (c), we show trajectory estimates from                                    scalability of the system by relying only on local interactions
+successive rendezvous between different groups of robots:                                      among neighboring robots. We present the Swarm-SLAM
+{0,2}, then {1,2,3}, and finally {3,4}. After the three ren-                                   solutions on the remaining dataset sequences in Fig. 5.
+dezvous, all estimates are within the same global reference
+frame. For comparison, we also include the result of a ren-
+dezvous with all robots along side the GPS estimate (d).
+
+
+
+
+                                                                   GPS
+                                                                   Robot 0
+                                                                   Robot 1
+                                                                   Robot 2
+
+
+
+
+       (a) S3E College             (b) GrAco Ground                (c) M2DGR
+Fig. 5: Swarm-SLAM trajectory estimates on various dataset
+sequences compared with GPS ground truth.                                                      Fig. 6: Swarm-SLAM experiment with 3 robots, equipped
+                                                                                               with lidars and RGB-D cameras, simultaneously exploring an
+                                                                                               indoor parking lot, and achieving shared situational awareness
+approaches: the Distributed Gauss-Seidel (DGS) pose graph
+                                                                                               via collaborative perception. A visualization of the resulting
+optimization [10] combined with Pairwise Consistency Maxi-
+                                                                                               map and pose graphs is showed in the top right corner.
+mization (PCM) [14] for outlier rejection as used in [7]; and
+a distributed implementation of Graduated Non-Convexity (D-
+GNC) [16] based on the RCBD solver [11]. Our chosen back-                                      B. Real-World Experiments
+end consistently achieved the highest level of accuracy (ATE)                                     To assess the viability of Swarm-SLAM on resource-
+whereas alternative methods occasionally fell short of gener-                                  constrained platforms, we deployed the system in an indoor
+ating reasonable estimates. We also consistently outperforms                                   parking lot and gathered statistics regarding the computation
+the other approaches in terms of required communication and                                    time and communication load. As shown in Fig. 6, we per-
+computation time. Interestingly, when tested on KITTI-360 09,                                  formed an online real-world demonstration with 3 different
+our dataset with the highest number of robots, both DGS+PCM                                    robots (Boston Dynamics Spot, Agilex Scout, and Agilex
+and D-GNC take less computation time compared to GNC,                                          Scout Mini), all equipped with an NVIDIA Jetson AGX Xavier
+yet they don’t achieve equivalent accuracy and necessitate                                     onboard computer, an Intel Realsense D455 camera, an Ouster
+more than five times the amount of data transmission. While                                    lidar OS0-64, a VectorNav VN100 IMU, and a GL-iNet GL-
+distributed approaches benefit from the division of labour on                                  S1300 OpenWrt gateway for ad hoc networking. We used
+large problems, more research is required to obtain the same                                   lidars and IMUs for odometry and the RGB-D cameras for
+levels of accuracy, robustness, and communication bandwidth.                                   inter-robot loop closure detection.
+This justifies our practical choice of a simpler approach                                         As stated in Table III, our robots travelled a total of
+computing the back-end on a single decentrally-elected robot,                                  475 meters during the experiment and produced a total of
+which is more robust to communication failures and easier to                                   3103 keyframes that needed to be matches and verified in
+implement.                                                                                     the search for inter-robot loop closures. The process resulted
+   In Fig. 4, we show the Swarm-SLAM resulting estimates                                       in 67 loop closures, including 10 that were rejected by the
+on the KITTI360 09 sequence from four different rendezvous,                                    GNC optimizer. This large number of outliers is attributable to
+defined as an encounter in which a subset of robots are within                                 the many similar-looking sections of the parking lot. Swarm-
+communication range of each other. Our anchor selection                                        SLAM acheived accurate localization with the transmission
+8
+
+
+
+of only 94.95 MB of data between the robots, excluding the                        [14] J. G. Mangelson, D. Dominic, R. M. Eustice, and R. Vasudevan, “Pair-
+visualization. The communication load is mostly attributable to                        wise Consistent Measurement Set Maximization for Robust Multi-Robot
+                                                                                       Map Merging,” in 2018 IEEE International Conference on Robotics and
+the front-end and thus dependent on the number of keyframes.                           Automation (ICRA), May 2018, pp. 2916–2923.
+In Table III, we also report the average sparsification and                       [15] H. Yang, P. Antonante, V. Tzoumas, and L. Carlone, “Graduated Non-
+pose graph optimization times. We can observe that the                                 Convexity for Robust Spatial Perception: From Non-Minimal Solvers
+                                                                                       to Global Outlier Rejection,” IEEE Robotics and Automation Letters,
+sparsification time, while being non-negligible, is lower than                         vol. 5, no. 2, pp. 1127–1134, Apr. 2020.
+the pose graph optimization. To mitigate this, we implemented                     [16] Y. Tian, Y. Chang, F. Herrera Arias, C. Nieto-Granda, J. P. How, and
+sparsification and optimization within separate threads.                               L. Carlone, “Kimera-Multi: Robust, Distributed, Dense Metric-Semantic
+                                                                                       SLAM for Multi-Robot Systems,” IEEE Transactions on Robotics,
+                                                                                       vol. 38, no. 4, pp. 2022–2038, Aug. 2022.
+           VII. C ONCLUSIONS A ND F UTURE W ORK                                   [17] Y. Huang, T. Shan, F. Chen, and B. Englot, “DiSCo-SLAM: Distributed
+   In this paper, we presented Swarm-SLAM, a comprehensive                             Scan Context-Enabled Multi-Robot LiDAR SLAM With Two-Stage
+                                                                                       Global-Local Graph Optimization,” IEEE Robotics and Automation
+resource-efficient C-SLAM framework that is designed to                                Letters, vol. 7, no. 2, pp. 1150–1157, Apr. 2022.
+comply with essential properties of swarm robotics. In future                     [18] Y. Chang, K. Ebadi, C. E. Denniston, M. F. Ginting, A. Rosinol,
+work, we aim to investigate collaborative domain calibration                           A. Reinke, M. Palieri, J. Shi, A. Chatterjee, B. Morrell, A.-a. Agha-
+                                                                                       mohammadi, and L. Carlone, “LAMP 2.0: A Robust Multi-Robot
+and/or uncertainty estimation in place recognition [33] to                             SLAM System for Operation in Challenging Large-Scale Underground
+reduce the prevalence of measurement outliers among inter-                             Environments,” IEEE Robotics and Automation Letters, vol. 7, no. 4,
+robot loop closures, and therefore increase the overall accuracy                       pp. 9175–9182, Oct. 2022.
+                                                                                  [19] A. Cramariuc, L. Bernreiter, F. Tschopp, M. Fehr, V. Reijgwart, J. Nieto,
+and resilience of C-SLAM. Overall, we hope that our open-                              R. Siegwart, and C. Cadena, “Maplab 2.0 – A Modular and Multi-Modal
+source framework will be useful as a testbed for the research                          Mapping Framework,” Dec. 2022.
+and development of new methods and techniques in place                            [20] S. Macenski, T. Foote, B. Gerkey, C. Lalancette, and W. Woodall, “Robot
+                                                                                       Operating System 2: Design, architecture, and uses in the wild,” Science
+recognition, inter-robot loop closure detection, multi-robot                           Robotics, vol. 7, no. 66, May 2022.
+pose graph optimization, and other open-problems.                                 [21] Y. Tian, K. Khosoussi, and J. P. How, “A resource-aware approach to
+                                                                                       collaborative loop-closure detection with provable performance guaran-
+                              R EFERENCES                                              tees,” The International Journal of Robotics Research, vol. 40, no. 10-11,
+                                                                                       pp. 1212–1233, Sept. 2021.
+ [1] C. Cadena, L. Carlone, H. Carrillo, Y. Latif, D. Scaramuzza, J. Neira,       [22] K. J. Doherty, D. M. Rosen, and J. J. Leonard, “Performance Guaran-
+     I. Reid, and J. J. Leonard, “Past, Present, and Future of Simultaneous            tees for Spectral Initialization in Rotation Averaging and Pose-Graph
+     Localization and Mapping: Toward the Robust-Perception Age,” IEEE                 SLAM,” arXiv:2201.03773 [cs], Jan. 2022.
+     Transactions on Robotics, vol. 32, no. 6, pp. 1309–1332, Dec. 2016.          [23] C. E. Denniston, Y. Chang, A. Reinke, K. Ebadi, G. S. Sukhatme,
+ [2] P.-Y. Lajoie, B. Ramtoula, F. Wu, and G. Beltrame, “Towards Collabo-              L. Carlone, B. Morrell, and A.-a. Agha-mohammadi, “Loop Closure
+     rative Simultaneous Localization and Mapping: A Survey of the Current             Prioritization for Efficient and Scalable Multi-Robot SLAM,” IEEE
+     Research Landscape,” Field Robotics, vol. 2, no. 1, pp. 971–1000, Mar.            Robotics and Automation Letters, vol. 7, no. 4, pp. 9651–9658, Oct.
+     2022.                                                                             2022.
+ [3] M. Brambilla, E. Ferrante, M. Birattari, and M. Dorigo, “Swarm               [24] Y. Tian and J. P. How, “Spectral Sparsification for Communication-
+     robotics: A review from the swarm engineering perspective,” Swarm                 Efficient Collaborative Rotation and Translation Estimation,” Oct. 2022.
+     Intelligence, vol. 7, no. 1, pp. 1–41, Mar. 2013.                            [25] D. Mosk-Aoyama, “Maximum algebraic connectivity augmentation is
+ [4] M. Kegeleirs, G. Grisetti, and M. Birattari, “Swarm SLAM: Challenges              NP-hard,” Operations Research Letters, vol. 36, no. 6, pp. 677–679,
+     and Perspectives,” Frontiers in Robotics and AI, vol. 8, 2021.                    Nov. 2008.
+ [5] K. J. Doherty, D. M. Rosen, and J. J. Leonard, “Spectral Measurement         [26] M. Giamou, K. Khosoussi, and J. P. How, “Talk Resource-Efficiently
+     Sparsification for Pose-Graph SLAM,” arXiv:2203.13897 [cs], Mar.                  to Me: Optimal Communication Planning for Distributed Loop Closure
+     2022.                                                                             Detection,” in 2018 IEEE International Conference on Robotics and
+ [6] T. Cieslewski, S. Choudhary, and D. Scaramuzza, “Data-Efficient De-               Automation (ICRA), May 2018, pp. 3841–3848.
+     centralized Visual SLAM,” in 2018 IEEE International Conference on           [27] A. Geiger, P. Lenz, and R. Urtasun, “Are we ready for autonomous
+     Robotics and Automation (ICRA), May 2018, pp. 2466–2473.                          driving? The KITTI vision benchmark suite,” in 2012 IEEE Conference
+ [7] P.-Y. Lajoie, B. Ramtoula, Y. Chang, L. Carlone, and G. Beltrame,                 on Computer Vision and Pattern Recognition. Providence, RI: IEEE,
+     “DOOR-SLAM: Distributed, Online, and Outlier Resilient SLAM for                   June 2012, pp. 3354–3361.
+     Robotic Teams,” IEEE Robotics and Automation Letters, vol. 5, no. 2,         [28] Y. Liao, J. Xie, and A. Geiger, “KITTI-360: A Novel Dataset and
+     pp. 1656–1663, Apr. 2020.                                                         Benchmarks for Urban Scene Understanding in 2D and 3D,” IEEE
+ [8] G. Berton, C. Masone, and B. Caputo, “Rethinking Visual Geo-                      Transactions on Pattern Analysis and Machine Intelligence, pp. 1–1,
+     localization for Large-Scale Applications,” in 2022 IEEE/CVF Con-                 2022.
+     ference on Computer Vision and Pattern Recognition (CVPR). New               [29] Y. Zhu, Y. Kong, Y. Jie, S. Xu, and H. Cheng, “GRACO: A Multimodal
+     Orleans, LA, USA: IEEE, June 2022, pp. 4868–4878.                                 Dataset for Ground and Aerial Cooperative Localization and Mapping,”
+ [9] G. Kim and A. Kim, “Scan Context: Egocentric Spatial Descriptor for               IEEE Robotics and Automation Letters, vol. 8, no. 2, pp. 966–973, Feb.
+     Place Recognition Within 3D Point Cloud Map,” in 2018 IEEE/RSJ                    2023.
+     International Conference on Intelligent Robots and Systems (IROS), Oct.      [30] J. Yin, A. Li, T. Li, W. Yu, and D. Zou, “M2DGR: A Multi-Sensor and
+     2018, pp. 4802–4809.                                                              Multi-Scenario SLAM Dataset for Ground Robots,” IEEE Robotics and
+[10] S. Choudhary, L. Carlone, C. Nieto, J. Rogers, H. I. Christensen,                 Automation Letters, vol. 7, no. 2, pp. 2266–2273, Apr. 2022.
+     and F. Dellaert, “Distributed mapping with privacy and communication         [31] D. Feng, Y. Qi, S. Zhong, Z. Chen, Y. Jiao, Q. Chen, T. Jiang, and
+     constraints: Lightweight algorithms and object-based models,” The Inter-          H. Chen, “S3E: A Large-scale Multimodal Dataset for Collaborative
+     national Journal of Robotics Research, vol. 36, no. 12, pp. 1286–1311,            SLAM,” Oct. 2022.
+     Oct. 2017.                                                                   [32] M. Labbé and F. Michaud, “RTAB-Map as an open-source lidar and
+[11] Y. Tian, K. Khosoussi, D. M. Rosen, and J. P. How, “Distributed                   visual simultaneous localization and mapping library for large-scale and
+     Certifiably Correct Pose-Graph Optimization,” IEEE Transactions on                long-term online operation,” Journal of Field Robotics, vol. 36, no. 2,
+     Robotics, pp. 1–20, 2021.                                                         pp. 416–446, Mar. 2019.
+[12] R. Murai, J. Ortiz, S. Saeedi, P. H. J. Kelly, and A. J. Davison, “A Robot   [33] P.-Y. Lajoie and G. Beltrame, “Self-supervised domain calibration and
+     Web for Distributed Many-Device Localisation,” Feb. 2022.                         uncertainty estimation for place recognition,” IEEE Robotics and Au-
+[13] P.-Y. Lajoie, S. Hu, G. Beltrame, and L. Carlone, “Modeling Perceptual            tomation Letters, vol. 8, no. 2, pp. 792–799, Feb. 2023.
+     Aliasing in SLAM via Discrete–Continuous Graphical Models,” IEEE
+     Robotics and Automation Letters, vol. 4, no. 2, pp. 1232–1239, Apr.
+     2019.
+

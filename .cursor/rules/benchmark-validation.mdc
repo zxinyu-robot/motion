@@ -1,0 +1,61 @@
+---
+description: 40-验证 benchmark 填写与证据回链规范
+globs: 40-验证/**/*
+alwaysApply: false
+---
+
+# 40-验证 Benchmark 规则
+
+本仓**不存放可编译代码**；此处只存验证结果、指标、报告，并**回链** `motion_ws` 的 commit/tag。
+
+## 开工前
+
+1. 读 `40-验证/README.md`、`40-验证/P0-Benchmark-模板.md`
+2. 对照 `02-架构设计/Go2-VLA-SLAM-Token技术方案.md` 确认测什么
+3. 查 `01-工作计划/技术栈索引.md` 确认 stack 路径与版本
+
+## 文件命名
+
+```
+40-验证/
+├── P0-Benchmark-模板.md          # 首组基线（单机 SLAM-Token）
+├── P1-<场景>-<简称>.md           # 后续扩展 benchmark
+└── reports/                      # 可选：evo 图、原始日志摘要
+```
+
+新 benchmark 文件 `id` 格式：`BENCH-P0-001`、`BENCH-P1-xxx`。
+
+## 元数据必填（文末「## 文档元数据」表）
+
+字段：id、type、stage、status、canonical、evidence_level、stack、commit、updated、next。正文以 `#` 标题开头，勿用文首 YAML front-matter。
+
+## 必填章节（按模板）
+
+1. **环境**：平台、边端/网关型号、网络条件、SLAM 前端选用、stack commit、实测日期
+2. **指标表**：目标/参考值、实测值、备注（工具：evo、ros2 topic hz 等）
+3. **测试场景**：勾选已完成场景（室内、弱网、断网恢复等）
+4. **附件回链**：bag 路径、报告路径、复现命令（可写在备注或 `reports/`）
+
+## 填写铁律
+
+- 实测列**只能填真实跑出的数**；未测留空并标注【待补充】，禁止用架构文档参考值冒充实测
+- 引用架构文档中的参考值（如 ~9.4ms、~200KB）写在「目标/参考」列，不得写入「实测」列
+- 每项指标注明测量工具或脚本来源（【事实】附路径/命令）
+- `commit` 必须与实测代码版本一致；换 commit 重测须更新并注明日期
+
+## 填完后的回链动作
+
+1. 将对应 L2 文档 `evidence_level` 从 `proposal` 升为 `measured`（仅当有关键指标已实测）
+2. 在 `05-知识沉淀/` 相关 CAP 卡补充 `evidence_level: measured` 与 benchmark 引用
+3. 更新 `06-产出/论文/*/meta.md` 的 `benchmark_refs`
+4. 更新 `ProjectState.md` 中 T-004 等验证任务状态
+
+## P0 首组最低验收（单机）
+
+至少完成并填实测值：
+
+- [ ] 环境表除【待补充】外字段齐全
+- [ ] `stack` + `commit` 已填
+- [ ] 定位 ATE/RPE 或等价定位指标 ≥1 项
+- [ ] 关键帧大小或发送频率 ≥1 项
+- [ ] ≥1 个测试场景已勾选并附 bag/日志路径

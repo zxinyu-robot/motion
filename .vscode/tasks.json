@@ -1,0 +1,26 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Smart Translate",
+      "type": "process",
+      "command": "python3",
+      "args": [
+        "${workspaceFolder}/tools/translate.py",
+        "--smart"
+      ],
+      "options": {
+        "env": {
+          "TRANSLATE_TEXT": "${selectedText}",
+          "DISPLAY": "${env:DISPLAY}"
+        }
+      },
+      "presentation": {
+        "reveal": "never",
+        "panel": "shared",
+        "focus": false
+      },
+      "problemMatcher": []
+    }
+  ]
+}

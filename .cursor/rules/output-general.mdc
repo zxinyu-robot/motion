@@ -1,0 +1,59 @@
+---
+description: 06-产出通用调度与保密规范（论文/专利/spec 共用）
+globs: 06-产出/**/*
+alwaysApply: false
+---
+
+# 06-产出通用规则
+
+本目录是**对外产出调度中心**（论文、专利、Spec）；专利正文统一落在 `06-产出/专利/`（`A族/` + `C族/` + 族谱），仓根 `专利/` 仅为重定向指针。
+
+## 开工前
+
+1. 读 `06-产出/README.md`、`ProjectState.md` 任务队列
+2. 专利相关先读 `06-产出/专利/README.md` 与 `06-产出/专利/专利族谱映射.md`
+3. 遵守铁律六：**先专利后论文**（`patent.stage < filed` 前不得把同技术点完整方法写入待投稿论文）
+
+## 目录与职责
+
+| 子目录 | 内容 | 专项规则 |
+|--------|------|----------|
+| `论文/` | P1/P2/P3 meta + draft | `paper-draft.mdc` |
+| `专利/` | 族谱、A 族交底、C 族方案/骨架 | `patent-disclosure.mdc` |
+| `spec/` | 对外 Spec（申请前仅 internal） | 本规则 |
+
+## meta.md 必填元数据（文末「## 文档元数据」表，正文 `#` 开头）
+
+| 字段 | 说明 |
+|------|------|
+| id | PAPER-Px-001 / PAT-XXX-001 / SPEC-XXX-001 |
+| type | paper / patent / spec |
+| stage | idea → outline → draft → … |
+| status | todo / in-progress / done / archived |
+| priority | ★…（可选） |
+| confidentiality | public / internal / patent-sensitive |
+| knowledge_refs | 05-知识沉淀 CAP-* |
+| patent_refs | 关联专利 id |
+| benchmark_refs | 40-验证 BENCH-* |
+| updated / next | 日期与下一步 |
+
+勿在文首使用 YAML `---` front-matter 块。
+
+## 状态机
+
+- **论文**：`idea → outline → draft → experiment → submit → review → accepted`
+- **专利**：`idea → disclosure → claims → filed → granted`
+- **Spec**：`idea → draft → internal-review → published`（`filed` 前不得 `published` 含未申请独权）
+
+## 产出约束
+
+- 实验数字必须来自 `40-验证/` 或标注【待补充：需跑实验】；禁止编造
+- `evidence_level` 未达 `measured` 时，meta 与正文不得写「已验证」「已量产」
+- `confidentiality: patent-sensitive` 不得建议公开到可检索渠道（GitHub 公开仓、预印本、对外 Spec）
+- 每完成一项产出：更新对应 `meta.md` 的 `stage`/`next`，并同步 `ProjectState.md` 任务队列
+
+## 分流原则
+
+- **专利**归产品护城河（上位概括、不写死具体厂商实现）
+- **论文**归学术差异化（引用能力卡与 benchmark，不重复专利独权表述）
+- **Spec**对外接口与部署说明；敏感协议细节以 `02-架构设计/` canonical 文档为准
